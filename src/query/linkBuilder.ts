@@ -70,7 +70,7 @@ function buildMmLinkCount(
     return db.raw('0');
   }
 
-  const mmTable = getTableByIdOrThrow(mmTableId, tables);
+  const mmTable = getTableByIdOrThrow(tables, mmTableId);
 
   return db(`${TABLE_RELATIONS} AS link_count`)
     .count('*')
@@ -90,7 +90,7 @@ function buildHmLinkCount(
     return db.raw('0');
   }
 
-  const childTable = getTableByIdOrThrow(childTableId, tables);
+  const childTable = getTableByIdOrThrow(tables, childTableId);
 
   let fkColumnName = 'fk_parent_id';
   if (options.fk_child_column_id) {

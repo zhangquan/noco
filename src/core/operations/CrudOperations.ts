@@ -1,120 +1,97 @@
 /**
- * Base model implementation
- * @module core/BaseModel
+ * CRUD operations module
+ * @module core/operations/CrudOperations
  */
 
 import type { Knex } from 'knex';
 import { ulid } from 'ulid';
-import type { IBaseModel } from './interfaces';
-import { NcError } from './NcError';
-import type { Column, Table, ListArgs, GroupByArgs, BulkOptions, RequestContext, Record } from '../types';
-import { UITypes } from '../types';
-import { TABLE_DATA, ModelConfig, DEFAULT_MODEL_CONFIG } from '../config';
-import { sanitize } from '../utils/sanitize';
+import type { IModelContext } from '../ModelContext';
+import { NcError } from '../NcError';
+import type { Column, Table, ListArgs, GroupByArgs, BulkOptions, RequestContext, Record } from '../../types';
+import { UITypes } from '../../types';
+import { TABLE_DATA } from '../../config';
+import { sanitize } from '../../utils/sanitize';
 import {
   isSystemColumn,
   isVirtualColumn,
   getColumnsWithPk,
-  getPrimaryKeyOrDefault,
-  getTableByIdOrThrow,
-} from '../utils/columnUtils';
+  parseFields,
+} from '../../utils/columnUtils';
 import {
   createQueryBuilder,
   createInsertBuilder,
   buildSelectExpressions,
   applyPagination,
   buildPkWhere,
-} from '../query/sqlBuilder';
-import { parseFields } from '../utils/columnUtils';
-import { applyConditions, parseWhereString } from '../query/conditionBuilder';
-import { applySorts, parseSortString } from '../query/sortBuilder';
+  getColumnExpression,
+} from '../../query/sqlBuilder';
+import { applyConditions, parseWhereString } from '../../query/conditionBuilder';
+import { applySorts, parseSortString } from '../../query/sortBuilder';
 
 // ============================================================================
-// Base Model Class
+// CRUD Operations Interface
+// ============================================================================
+
+export interface ICrudOperations {
+  // Read
+  readByPk(id: string, fields?: string | string[]): Promise<Record | null>;
+  exists(id: string): Promise<boolean>;
+  findOne(args: ListArgs): Promise<Record | null>;
+
+  // List
+  list(args?: ListArgs, ignoreFilterSort?: boolean): Promise<Record[]>;
+  count(args?: ListArgs, ignoreFilterSort?: boolean): Promise<number>;
+
+  // Write
+  insert(data: Record, trx?: Knex.Transaction, ctx?: RequestContext): Promise<Record>;
+  updateByPk(id: string, data: Record, trx?: Knex.Transaction, ctx?: RequestContext): Promise<Record>;
+  deleteByPk(id: string, trx?: Knex.Transaction, ctx?: RequestContext): Promise<number>;
+
+  // Bulk
+  bulkInsert(data: Record[], options?: BulkOptions): Promise<Record[]>;
+  bulkUpdate(data: Record[], options?: BulkOptions): Promise<Record[]>;
+  bulkUpdateAll(args: ListArgs, data: Record, options?: BulkOptions): Promise<number>;
+  bulkDelete(ids: string[], options?: BulkOptions): Promise<number>;
+  bulkDeleteAll(args?: ListArgs, options?: BulkOptions): Promise<number>;
+
+  // Aggregation
+  groupBy(args: GroupByArgs): Promise<Record[]>;
+
+  // Query builders
+  getQueryBuilder(): Knex.QueryBuilder;
+  getInsertBuilder(): Knex.QueryBuilder;
+}
+
+// ============================================================================
+// CRUD Operations Class
 // ============================================================================
 
 /**
- * Base model implementation with CRUD operations
+ * CRUD operations implementation
  */
-export class BaseModel implements IBaseModel {
-  protected readonly _db: Knex;
-  protected readonly _tableId: string;
-  protected readonly _viewId?: string;
-  protected readonly _tables: Table[];
-  protected readonly _table: Table;
-  protected readonly _alias?: string;
-  protected readonly _config: ModelConfig;
-
-  constructor(params: {
-    db: Knex;
-    tableId: string;
-    tables: Table[];
-    viewId?: string;
-    alias?: string;
-    config?: Partial<ModelConfig>;
-  }) {
-    this._db = params.db;
-    this._tableId = params.tableId;
-    this._viewId = params.viewId;
-    this._tables = params.tables;
-    this._alias = params.alias;
-    this._config = { ...DEFAULT_MODEL_CONFIG, ...params.config };
-
-    const table = params.tables.find((t) => t.id === params.tableId);
-    if (!table) {
-      NcError.tableNotFound(params.tableId);
-    }
-    this._table = table!;
-  }
-
-  // ==========================================================================
-  // Getters
-  // ==========================================================================
-
-  get db(): Knex {
-    return this._db;
-  }
-
-  get tableId(): string {
-    return this._tableId;
-  }
-
-  get viewId(): string | undefined {
-    return this._viewId;
-  }
-
-  get tables(): Table[] {
-    return this._tables;
-  }
-
-  get table(): Table {
-    return this._table;
-  }
-
-  get alias(): string | undefined {
-    return this._alias;
-  }
+export class CrudOperations implements ICrudOperations {
+  constructor(protected readonly ctx: IModelContext) {}
 
   // ==========================================================================
   // Query Builders
   // ==========================================================================
 
   getQueryBuilder(): Knex.QueryBuilder {
-    return createQueryBuilder(this._db, this._table, this._alias);
+    return createQueryBuilder(this.ctx.db, this.ctx.table, this.ctx.alias);
   }
 
   getInsertBuilder(): Knex.QueryBuilder {
-    return createInsertBuilder(this._db, this._table);
+    return createInsertBuilder(this.ctx.db, this.ctx.table);
   }
 
   // ==========================================================================
-  // CRUD Operations
+  // Read Operations
   // ==========================================================================
 
   async readByPk(id: string, fields?: string | string[]): Promise<Record | null> {
     const qb = this.getQueryBuilder();
     await this.buildSelect(qb, fields);
-    qb.where(buildPkWhere(this._table, id, this._alias));
+    qb.where(buildPkWhere(this.ctx.table, id, this.ctx.alias));
     qb.limit(1);
 
     const result = await this.executeQuery<Record[]>(qb);
@@ -123,8 +100,8 @@ export class BaseModel implements IBaseModel {
 
   async exists(id: string): Promise<boolean> {
     const qb = this.getQueryBuilder();
-    qb.select(this._db.raw('1'));
-    qb.where(buildPkWhere(this._table, id as string, this._alias));
+    qb.select(this.ctx.db.raw('1'));
+    qb.where(buildPkWhere(this.ctx.table, id, this.ctx.alias));
     qb.limit(1);
 
     const result = await qb;
@@ -134,66 +111,6 @@ export class BaseModel implements IBaseModel {
   async findOne(args: ListArgs): Promise<Record | null> {
     const results = await this.list({ ...args, limit: 1 });
     return results.length > 0 ? results[0] : null;
-  }
-
-  async insert(
-    data: Record,
-    trx?: Knex.Transaction,
-    ctx?: RequestContext
-  ): Promise<Record> {
-    const sanitized = sanitize(data) as Record;
-    this.populatePk(sanitized);
-
-    const mapped = this.mapDataForInsert(sanitized, ctx);
-
-    const qb = this.getInsertBuilder();
-    if (trx) qb.transacting(trx);
-
-    await qb.insert(mapped);
-
-    return this.readByPk(mapped.id as string) as Promise<Record>;
-  }
-
-  async updateByPk(
-    id: string,
-    data: Record,
-    trx?: Knex.Transaction,
-    ctx?: RequestContext
-  ): Promise<Record> {
-    const existing = await this.readByPk(id);
-    if (!existing) {
-      NcError.recordNotFound(id, this._table.title);
-    }
-
-    const sanitized = sanitize(data) as Record;
-    const merged = { ...existing, ...sanitized };
-    const mapped = this.mapDataForUpdate(merged, ctx);
-
-    const qb = this._db(TABLE_DATA);
-    if (trx) qb.transacting(trx);
-    qb.where('id', id);
-    qb.where('fk_table_id', this._table.id);
-    await qb.update(mapped);
-
-    return this.readByPk(id) as Promise<Record>;
-  }
-
-  async deleteByPk(
-    id: string,
-    trx?: Knex.Transaction,
-    ctx?: RequestContext
-  ): Promise<number> {
-    const exists = await this.exists(id);
-    if (!exists) {
-      NcError.recordNotFound(id, this._table.title);
-    }
-
-    const qb = this._db(TABLE_DATA);
-    if (trx) qb.transacting(trx);
-    qb.where('id', id);
-    qb.where('fk_table_id', this._table.id);
-
-    return qb.delete();
   }
 
   // ==========================================================================
@@ -208,7 +125,7 @@ export class BaseModel implements IBaseModel {
       await this.applyFiltersAndSorts(qb, args);
     }
 
-    applyPagination(qb, args.limit, args.offset, this._config);
+    applyPagination(qb, args.limit, args.offset, this.ctx.config);
 
     return this.executeQuery<Record[]>(qb);
   }
@@ -223,6 +140,70 @@ export class BaseModel implements IBaseModel {
 
     const result = await qb;
     return parseInt(result[0]?.count || '0', 10);
+  }
+
+  // ==========================================================================
+  // Write Operations
+  // ==========================================================================
+
+  async insert(
+    data: Record,
+    trx?: Knex.Transaction,
+    reqCtx?: RequestContext
+  ): Promise<Record> {
+    const sanitized = sanitize(data) as Record;
+    this.populatePk(sanitized);
+
+    const mapped = this.mapDataForInsert(sanitized, reqCtx);
+
+    const qb = this.getInsertBuilder();
+    if (trx) qb.transacting(trx);
+
+    await qb.insert(mapped);
+
+    return this.readByPk(mapped.id as string) as Promise<Record>;
+  }
+
+  async updateByPk(
+    id: string,
+    data: Record,
+    trx?: Knex.Transaction,
+    reqCtx?: RequestContext
+  ): Promise<Record> {
+    const existing = await this.readByPk(id);
+    if (!existing) {
+      NcError.recordNotFound(id, this.ctx.table.title);
+    }
+
+    const sanitized = sanitize(data) as Record;
+    const merged = { ...existing, ...sanitized };
+    const mapped = this.mapDataForUpdate(merged, reqCtx);
+
+    const qb = this.ctx.db(TABLE_DATA);
+    if (trx) qb.transacting(trx);
+    qb.where('id', id);
+    qb.where('fk_table_id', this.ctx.table.id);
+    await qb.update(mapped);
+
+    return this.readByPk(id) as Promise<Record>;
+  }
+
+  async deleteByPk(
+    id: string,
+    trx?: Knex.Transaction,
+    reqCtx?: RequestContext
+  ): Promise<number> {
+    const exists = await this.exists(id);
+    if (!exists) {
+      NcError.recordNotFound(id, this.ctx.table.title);
+    }
+
+    const qb = this.ctx.db(TABLE_DATA);
+    if (trx) qb.transacting(trx);
+    qb.where('id', id);
+    qb.where('fk_table_id', this.ctx.table.id);
+
+    return qb.delete();
   }
 
   // ==========================================================================
@@ -250,7 +231,7 @@ export class BaseModel implements IBaseModel {
       return executeInserts(trx);
     }
 
-    return this._db.transaction((tx) => executeInserts(tx));
+    return this.ctx.db.transaction((tx) => executeInserts(tx));
   }
 
   async bulkUpdate(data: Record[], options: BulkOptions = {}): Promise<Record[]> {
@@ -283,10 +264,10 @@ export class BaseModel implements IBaseModel {
     const sanitized = sanitize(data) as Record;
     const mapped = this.mapDataForUpdate(sanitized, cookie);
 
-    const qb = this._db(TABLE_DATA);
+    const qb = this.ctx.db(TABLE_DATA);
     if (trx) qb.transacting(trx);
     qb.whereIn('id', ids);
-    qb.where('fk_table_id', this._table.id);
+    qb.where('fk_table_id', this.ctx.table.id);
 
     await qb.update(mapped);
 
@@ -298,10 +279,10 @@ export class BaseModel implements IBaseModel {
 
     if (ids.length === 0) return 0;
 
-    const qb = this._db(TABLE_DATA);
+    const qb = this.ctx.db(TABLE_DATA);
     if (trx) qb.transacting(trx);
     qb.whereIn('id', ids);
-    qb.where('fk_table_id', this._table.id);
+    qb.where('fk_table_id', this.ctx.table.id);
 
     return qb.delete();
   }
@@ -319,16 +300,16 @@ export class BaseModel implements IBaseModel {
 
   async groupBy(args: GroupByArgs): Promise<Record[]> {
     const { column_name, aggregation = 'count' } = args;
-    const column = getColumnsWithPk(this._table).find(
+    const column = getColumnsWithPk(this.ctx.table).find(
       (c) => c.column_name === column_name || c.title === column_name
     );
 
     if (!column) return [];
 
-    const sqlCol = this.getColumnExpression(column);
+    const sqlCol = getColumnExpression(column, this.ctx.table, this.ctx.alias);
     const qb = this.getQueryBuilder();
 
-    qb.select(this._db.raw(`${sqlCol} as "${column_name}"`));
+    qb.select(this.ctx.db.raw(`${sqlCol} as "${column_name}"`));
 
     switch (aggregation.toLowerCase()) {
       case 'count': qb.count('* as count'); break;
@@ -339,9 +320,9 @@ export class BaseModel implements IBaseModel {
       default: qb.count('* as count');
     }
 
-    qb.groupBy(this._db.raw(sqlCol));
+    qb.groupBy(this.ctx.db.raw(sqlCol));
     await this.applyFiltersAndSorts(qb, args);
-    applyPagination(qb, args.limit, args.offset, this._config);
+    applyPagination(qb, args.limit, args.offset, this.ctx.config);
 
     return this.executeQuery<Record[]>(qb);
   }
@@ -351,19 +332,19 @@ export class BaseModel implements IBaseModel {
   // ==========================================================================
 
   protected async buildSelect(qb: Knex.QueryBuilder, fields?: string | string[]): Promise<void> {
-    const columns = parseFields(fields, this._table);
-    const selects = buildSelectExpressions(columns, this._table, this._alias, this._db);
+    const columns = parseFields(fields, this.ctx.table);
+    const selects = buildSelectExpressions(columns, this.ctx.table, this.ctx.alias, this.ctx.db);
     qb.select(selects);
   }
 
   protected async applyFilters(qb: Knex.QueryBuilder, args: ListArgs): Promise<void> {
     if (args.filterArr?.length) {
-      await applyConditions(args.filterArr, qb, this._table, this._tables, this._db);
+      await applyConditions(args.filterArr, qb, this.ctx.table, this.ctx.tables, this.ctx.db);
     }
     if (args.where) {
-      const filters = parseWhereString(args.where, this._table);
+      const filters = parseWhereString(args.where, this.ctx.table);
       if (filters.length) {
-        await applyConditions(filters, qb, this._table, this._tables, this._db);
+        await applyConditions(filters, qb, this.ctx.table, this.ctx.tables, this.ctx.db);
       }
     }
   }
@@ -372,12 +353,12 @@ export class BaseModel implements IBaseModel {
     await this.applyFilters(qb, args);
 
     if (args.sortArr?.length) {
-      await applySorts(args.sortArr, qb, this._table, this._tables, this._db, this._alias);
+      await applySorts(args.sortArr, qb, this.ctx.table, this.ctx.tables, this.ctx.db, this.ctx.alias);
     }
     if (args.sort) {
-      const sorts = parseSortString(args.sort, this._table);
+      const sorts = parseSortString(args.sort, this.ctx.table);
       if (sorts.length) {
-        await applySorts(sorts, qb, this._table, this._tables, this._db, this._alias);
+        await applySorts(sorts, qb, this.ctx.table, this.ctx.tables, this.ctx.db, this.ctx.alias);
       }
     }
   }
@@ -422,27 +403,27 @@ export class BaseModel implements IBaseModel {
     }
   }
 
-  protected mapDataForInsert(data: Record, ctx?: RequestContext): Record {
+  protected mapDataForInsert(data: Record, reqCtx?: RequestContext): Record {
     const { system, userData } = this.separateSystemAndUserData(data, false);
     const now = new Date().toISOString();
 
     return {
       id: (system.id as string) || ulid(),
-      fk_table_id: this._table.id,
+      fk_table_id: this.ctx.table.id,
       created_at: (system.created_at as string) || now,
       updated_at: (system.updated_at as string) || now,
-      created_by: (system.created_by as string | null) ?? ctx?.user?.id ?? null,
-      updated_by: (system.updated_by as string | null) ?? ctx?.user?.id ?? null,
+      created_by: (system.created_by as string | null) ?? reqCtx?.user?.id ?? null,
+      updated_by: (system.updated_by as string | null) ?? reqCtx?.user?.id ?? null,
       data: JSON.stringify(userData),
     };
   }
 
-  protected mapDataForUpdate(data: Record, ctx?: RequestContext): Record {
+  protected mapDataForUpdate(data: Record, reqCtx?: RequestContext): Record {
     const { userData } = this.separateSystemAndUserData(data, true);
 
     return {
       updated_at: new Date().toISOString(),
-      updated_by: ctx?.user?.id ?? null,
+      updated_by: reqCtx?.user?.id ?? null,
       data: JSON.stringify(userData),
     };
   }
@@ -453,7 +434,7 @@ export class BaseModel implements IBaseModel {
   ): { system: Record; userData: Record } {
     const system: Record = {};
     const userData: Record = {};
-    const columns = getColumnsWithPk(this._table);
+    const columns = getColumnsWithPk(this.ctx.table);
 
     for (const [key, value] of Object.entries(data)) {
       const column = columns.find(
@@ -532,11 +513,6 @@ export class BaseModel implements IBaseModel {
     }
   }
 
-  protected getColumnExpression(column: Column): string {
-    const { getColumnExpression } = require('../query/sqlBuilder');
-    return getColumnExpression(column, this._table, this._alias);
-  }
-
   protected chunk<T>(array: T[], size: number): T[][] {
     const chunks: T[][] = [];
     for (let i = 0; i < array.length; i += size) {
@@ -544,4 +520,11 @@ export class BaseModel implements IBaseModel {
     }
     return chunks;
   }
+}
+
+/**
+ * Create CRUD operations for a context
+ */
+export function createCrudOperations(ctx: IModelContext): CrudOperations {
+  return new CrudOperations(ctx);
 }

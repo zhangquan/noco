@@ -1,11 +1,11 @@
 # NocoDB Database Layer
 
-A clean, extensible database abstraction layer for PostgreSQL with JSONB storage.
+A clean, extensible database abstraction layer for PostgreSQL with JSONB storage using **composition pattern**.
 
 ## Features
 
 - 🚀 **High Performance**: Optimized for PostgreSQL with JSONB storage and GIN indexes
-- 📦 **Clean Architecture**: Well-organized modular structure with clear separation of concerns
+- 📦 **Composition Pattern**: Modular operations that can be combined flexibly
 - 🔗 **Relationship Support**: Full many-to-many relationship operations
 - 🧮 **Virtual Columns**: Support for Formula, Rollup, Lookup, and Links columns
 - 📋 **Bulk Operations**: Efficient batch insert, update, and delete
@@ -60,6 +60,38 @@ await model.updateByPk(user.id, { name: 'Jane' });
 await model.deleteByPk(user.id);
 ```
 
+## Architecture: Composition Pattern
+
+The model uses composition instead of inheritance. Each capability is a separate operation module that can be enabled or disabled:
+
+```typescript
+// Model with all features
+const fullModel = createFullModel({ db, tableId, tables });
+
+// Minimal model (only CRUD)
+const minimalModel = createMinimalModel({ db, tableId, tables });
+
+// Custom composition
+const customModel = new Model({
+  db, tableId, tables
+}, {
+  virtualColumns: true,
+  linkOperations: true,
+  lazyLoading: false,
+  copyOperations: true,
+});
+```
+
+### Operation Modules
+
+| Module | Description | Access |
+|--------|-------------|--------|
+| `CrudOperations` | Basic CRUD operations | Always included |
+| `LinkOperations` | Many-to-many relationships | `model.links` |
+| `VirtualColumnOperations` | Formula, Rollup, Lookup | `model.virtual` |
+| `LazyOperations` | Lazy loading | `model.lazy` |
+| `CopyOperations` | Record duplication | `model.copy` |
+
 ## Project Structure
 
 ```
@@ -73,15 +105,18 @@ src/
 │   ├── query.ts     # ListArgs, BulkOptions, Record
 │   └── index.ts     # Barrel export
 ├── core/            # Core abstractions
-│   ├── interfaces.ts  # IBaseModel, ILinkModel, IModel
-│   ├── NcError.ts     # Error handling
-│   ├── BaseModel.ts   # Base CRUD implementation
-│   ├── LinkModel.ts   # Many-to-many operations
+│   ├── ModelContext.ts   # Shared state for operations
+│   ├── NcError.ts        # Error handling
+│   ├── operations/       # Operation modules
+│   │   ├── CrudOperations.ts       # CRUD
+│   │   ├── LinkOperations.ts       # Many-to-many
+│   │   ├── VirtualColumnOperations.ts  # Virtual columns
+│   │   ├── LazyOperations.ts       # Lazy loading
+│   │   ├── CopyOperations.ts       # Deep copy
+│   │   └── index.ts
 │   └── index.ts
-├── models/          # Model implementations
-│   ├── Model.ts       # Full model with virtual columns
-│   ├── LazyModel.ts   # Lazy loading support
-│   ├── CopyModel.ts   # Copy/duplicate operations
+├── models/          # Model composition
+│   ├── Model.ts     # Main model composing operations
 │   └── index.ts
 ├── query/           # Query building
 │   ├── sqlBuilder.ts      # SQL expression helpers
@@ -108,24 +143,45 @@ src/
 
 #### `createModel(params)`
 
-Create a model instance with the specified configuration.
+Create a model with default options (virtual columns + links).
 
 ```typescript
 const model = createModel({
   db: knex,
   tableId: 'users',
   tables: allTables,
-  type: 'default', // 'default' | 'lazy' | 'copy'
 });
 ```
 
 #### `createLazyModel(params)`
 
-Create a model with lazy loading support for relations.
+Create a model with lazy loading enabled.
+
+```typescript
+const model = createLazyModel({ db, tableId, tables });
+
+// Load with relations
+const records = await model.lazy?.listWithRelations({ limit: 10 });
+```
 
 #### `createCopyModel(params)`
 
-Create a model with copy/duplicate functionality.
+Create a model with copy operations enabled.
+
+```typescript
+const model = createCopyModel({ db, tableId, tables });
+
+// Deep copy a record
+const copy = await model.copy?.copyRecordDeep('record_id', { deepCopy: true });
+```
+
+#### `createFullModel(params)`
+
+Create a model with all features enabled.
+
+#### `createMinimalModel(params)`
+
+Create a minimal model with only CRUD operations.
 
 ### CRUD Operations
 
@@ -179,62 +235,104 @@ await model.bulkDelete(['id1', 'id2', 'id3']);
 ### Link Operations (Many-to-Many)
 
 ```typescript
+// Access link operations via model.links
+const linkOps = model.links;
+
 // List linked records
-const linked = await model.mmList({
-  colId: 'link_column_id',
-  parentRowId: 'parent_id',
-});
+const linked = await linkOps.mmList(column, { parentId: 'parent_id' });
 
 // Count linked records
-const count = await model.mmListCount({
-  colId: 'link_column_id',
-  parentRowId: 'parent_id',
-});
+const count = await linkOps.mmListCount(column, { parentId: 'parent_id' });
 
-// Add link
-await model.addLink({
-  colId: 'link_column_id',
-  rowId: 'parent_id',
-  childId: 'child_id',
-});
+// Link records
+await linkOps.mmLink(column, ['child_id_1', 'child_id_2'], 'parent_id');
 
-// Remove link
-await model.removeLink({
-  colId: 'link_column_id',
-  rowId: 'parent_id',
-  childId: 'child_id',
-});
+// Unlink records
+await linkOps.mmUnlink(column, ['child_id_1'], 'parent_id');
+
+// List excluded (unlinked) records
+const excluded = await linkOps.mmExcludedList(column, { parentId: 'parent_id' });
 ```
 
 ### Lazy Loading
 
 ```typescript
-const lazyModel = createLazyModel({ db, tableId, tables });
+const model = createLazyModel({ db, tableId, tables });
 
-// Load relations lazily
-const relations = await lazyModel.loadRelated(record, 'link_col_id');
+// List with pre-loaded relations
+const records = await model.lazy?.listWithRelations({ limit: 10 });
 
-// Batch load for multiple records
-const { records, relations } = await lazyModel.listWithRelations({
-  limit: 10,
-  preloadRelations: ['link_col_1', 'link_col_2'],
-});
+// Read single record with relations
+const record = await model.lazy?.readByPkWithRelations('record_id');
+
+// Manually load relations for existing records
+const withRelations = await model.lazy?.loadRelations(records);
 ```
 
 ### Copy Operations
 
 ```typescript
-const copyModel = createCopyModel({ db, tableId, tables });
+const model = createCopyModel({ db, tableId, tables });
 
-// Copy a single record
-const result = await copyModel.copyRecord('record_id', {
+// Deep copy a single record
+const copy = await model.copy?.copyRecordDeep('record_id', {
   copyRelations: true,
-  excludeFields: ['sensitive_field'],
+  deepCopy: true,
+  maxDepth: 3,
+  excludeColumns: ['sensitive_field'],
 });
 
-// Deep copy with all linked records
-const { root, all } = await copyModel.deepCopy('record_id', {
-  maxDepth: 3,
+// Copy multiple records
+const copies = await model.copy?.copyRecordsDeep(['id1', 'id2'], {
+  copyRelations: true,
+});
+
+// Copy relations between records
+await model.copy?.copyRelations('source_id', 'target_id', {
+  deepCopy: false,  // Just link, don't duplicate
+});
+```
+
+### Virtual Column Operations
+
+```typescript
+// Virtual columns are automatically included in queries when enabled
+const model = createModel({ db, tableId, tables });
+
+// Formula, Rollup, Lookup, and Link count columns
+// are computed automatically in list/read operations
+const records = await model.list();
+
+// Access virtual column operations directly
+const virtualOps = model.virtual;
+const virtualColumns = virtualOps?.getVirtualColumns();
+```
+
+## Model Options
+
+```typescript
+interface ModelOptions {
+  virtualColumns?: boolean;   // Formula, Rollup, Lookup support
+  linkOperations?: boolean;   // Many-to-many operations
+  lazyLoading?: boolean;      // Lazy loading for relations
+  copyOperations?: boolean;   // Deep copy functionality
+}
+
+// Custom model configuration
+const model = new Model({
+  db,
+  tableId: 'users',
+  tables,
+  config: {
+    limitDefault: 25,
+    limitMin: 1,
+    limitMax: 1000,
+  },
+}, {
+  virtualColumns: true,
+  linkOperations: true,
+  lazyLoading: true,
+  copyOperations: true,
 });
 ```
 
@@ -259,11 +357,11 @@ The library uses two tables:
 | Column | Type | Description |
 |--------|------|-------------|
 | id | VARCHAR | Primary key (ULID) |
-| fk_table_id | VARCHAR | Junction table ID |
 | fk_parent_id | VARCHAR | Parent record ID |
 | fk_child_id | VARCHAR | Child record ID |
+| fk_mm_parent_column_id | VARCHAR | Parent link column ID |
+| fk_mm_child_column_id | VARCHAR | Child link column ID |
 | created_at | TIMESTAMP | Creation time |
-| updated_at | TIMESTAMP | Last update time |
 
 ## Supported Column Types
 
@@ -283,37 +381,25 @@ The library uses two tables:
 - **Lookup**: Values from related records
 - **Links**: Link count
 
-## Configuration
-
-```typescript
-import { DEFAULT_MODEL_CONFIG } from 'nocodb-db-layer';
-
-const model = createModel({
-  db,
-  tableId: 'users',
-  tables,
-  config: {
-    limitDefault: 25,  // Default page size
-    limitMin: 1,       // Minimum page size
-    limitMax: 1000,    // Maximum page size
-  },
-});
-```
-
 ## Error Handling
 
 ```typescript
-import { NcError } from 'nocodb-db-layer';
+import { NcError, ErrorCode } from 'nocodb-db-layer';
 
 try {
   await model.readByPk('nonexistent');
 } catch (error) {
   if (error instanceof NcError) {
-    console.log(error.code);        // 'NOT_FOUND'
+    console.log(error.code);        // ErrorCode.NOT_FOUND
     console.log(error.statusCode);  // 404
     console.log(error.details);     // { id: 'nonexistent' }
   }
 }
+
+// Use static factory methods
+NcError.notFound('Record not found');
+NcError.badRequest('Invalid input');
+NcError.validationError('Field required', { field: 'name' });
 ```
 
 ## License

@@ -1,8 +1,15 @@
 /**
- * Model implementations
+ * Models barrel export
  * @module models
  */
 
-export { Model } from './Model';
-export { LazyModel } from './LazyModel';
-export { CopyModel, type CopyOptions, type CopyResult } from './CopyModel';
+export {
+  Model,
+  createModel,
+  createLazyModel,
+  createCopyModel,
+  createFullModel,
+  createMinimalModel,
+  type IModel,
+  type ModelOptions,
+} from './Model';

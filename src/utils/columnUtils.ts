@@ -105,12 +105,23 @@ export function getTableById(tableId: string, tables: Table[]): Table | undefine
 /**
  * Get table by ID (throws if not found)
  */
-export function getTableByIdOrThrow(tableId: string, tables: Table[]): Table {
+export function getTableByIdOrThrow(tables: Table[], tableId: string): Table {
   const table = getTableById(tableId, tables);
   if (!table) {
     throw new Error(`Table '${tableId}' not found`);
   }
   return table;
+}
+
+/**
+ * Get column by ID (throws if not found)
+ */
+export function getColumnByIdOrThrow(columnId: string, table: Table): Column {
+  const column = getColumnById(columnId, table);
+  if (!column) {
+    throw new Error(`Column '${columnId}' not found`);
+  }
+  return column;
 }
 
 // ============================================================================

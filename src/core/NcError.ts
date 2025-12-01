@@ -22,9 +22,14 @@ export enum ErrorCode {
 }
 
 /**
+ * NcError type
+ */
+export type NcErrorType = NcError;
+
+/**
  * HTTP status codes mapping
  */
-const HTTP_STATUS: Record<ErrorCode, number> = {
+export const HTTP_STATUS: Readonly<Record<ErrorCode, number>> = {
   [ErrorCode.BAD_REQUEST]: 400,
   [ErrorCode.NOT_FOUND]: 404,
   [ErrorCode.INTERNAL_SERVER_ERROR]: 500,

@@ -32,6 +32,8 @@ export interface ListArgs {
   pks?: string;
   /** Direct condition object */
   condition?: Record<string, unknown>;
+  /** Parent ID for relation queries */
+  parentId?: string;
 }
 
 /**

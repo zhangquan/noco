@@ -64,7 +64,7 @@ export async function buildRollupSubquery(
     return db.raw('NULL');
   }
 
-  const relatedTable = getTableByIdOrThrow(relatedTableId, tables);
+  const relatedTable = getTableByIdOrThrow(tables, relatedTableId);
   const rollupColumn = getColumnById(fk_rollup_column_id, relatedTable);
   if (!rollupColumn) {
     return db.raw('NULL');
@@ -106,7 +106,7 @@ function buildMmRollup(
     return db.raw('NULL');
   }
 
-  const mmTable = getTableByIdOrThrow(mmTableId, tables);
+  const mmTable = getTableByIdOrThrow(tables, mmTableId);
   const parentAlias = alias || 'nc_bigtable';
 
   const childIdsSubquery = db(`${TABLE_RELATIONS} AS mm`)

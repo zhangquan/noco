@@ -216,9 +216,22 @@ export function buildPkWhere(
 // ============================================================================
 
 /**
+ * Get related table ID from link column
+ */
+export function getChildTableIdFromMM(column: Column): string | null {
+  if (!column.colOptions) return null;
+
+  const options = typeof column.colOptions === 'string'
+    ? JSON.parse(column.colOptions)
+    : column.colOptions;
+
+  return options?.fk_related_model_id || options?.fk_child_column_id || null;
+}
+
+/**
  * Get child table ID from MM junction table
  */
-export function getChildTableIdFromMM(parentTableId: string, mmTable: Table): string {
+export function getChildTableIdFromMMTable(parentTableId: string, mmTable: Table): string {
   const columns = mmTable.columns || [];
 
   for (const col of columns) {

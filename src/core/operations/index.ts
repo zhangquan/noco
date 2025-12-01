@@ -1,41 +1,36 @@
 /**
- * Core module barrel export
- * @module core
+ * Operations barrel export
+ * @module core/operations
  */
 
-// Error handling
-export { NcError, ErrorCode, HTTP_STATUS, type NcErrorType } from './NcError';
-
-// Model context
 export {
-  ModelContext,
-  createContext,
-  type IModelContext,
-  type ModelContextParams,
-} from './ModelContext';
-
-// Operations
-export {
-  // CRUD
   CrudOperations,
   createCrudOperations,
   type ICrudOperations,
-  // Links
+} from './CrudOperations';
+
+export {
   LinkOperations,
   createLinkOperations,
   type ILinkOperations,
-  // Virtual columns
+} from './LinkOperations';
+
+export {
   VirtualColumnOperations,
   createVirtualColumnOperations,
   type IVirtualColumnOperations,
-  // Lazy loading
+} from './VirtualColumnOperations';
+
+export {
   LazyOperations,
   createLazyOperations,
   type ILazyOperations,
-  // Copy
+} from './LazyOperations';
+
+export {
   CopyOperations,
   createCopyOperations,
   type ICopyOperations,
   type CopyOptions,
   type CopyRelationOptions,
-} from './operations';
+} from './CopyOperations';

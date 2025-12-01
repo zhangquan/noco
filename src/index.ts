@@ -1,176 +1,116 @@
 /**
- * NocoDB Database Layer
+ * NocoDB SQL Module
+ * A modular database abstraction layer for PostgreSQL with JSONB storage
  *
- * A clean, extensible database abstraction layer for PostgreSQL with JSONB storage.
- *
- * @example
- * ```typescript
- * import { createModel, createTables } from 'nocodb-db-layer';
- *
- * // Setup database tables
- * await createTables(knex);
- *
- * // Create a model instance
- * const model = createModel({
- *   db: knex,
- *   tableId: 'table_xyz',
- *   tables: allTableDefinitions,
- * });
- *
- * // CRUD operations
- * const record = await model.insert({ name: 'John', email: 'john@example.com' });
- * const records = await model.list({ limit: 10 });
- * await model.updateByPk(record.id, { name: 'Jane' });
- *
- * // Link operations
- * await model.addLink({ colId: 'link_col', rowId: record.id, childId: 'child_id' });
- * const linked = await model.mmList({ colId: 'link_col', parentRowId: record.id });
- * ```
- *
- * @module nocodb-db-layer
+ * @module nocodb-sql
  */
 
 import type { Knex } from 'knex';
-import { Model, LazyModel, CopyModel } from './models';
 import type { Table } from './types';
-import { TABLE_DATA, TABLE_RELATIONS, ModelConfig } from './config';
+import { TABLE_DATA, TABLE_RELATIONS } from './config';
 
 // ============================================================================
-// Re-exports
+// Model Factory - Main Entry Point
 // ============================================================================
 
-// Types
-export * from './types';
-
-// Config
-export { TABLE_DATA, TABLE_RELATIONS, PAGINATION, BULK_OPERATIONS, DEFAULT_MODEL_CONFIG } from './config';
-export type { ModelConfig } from './config';
-
-// Core
-export { NcError, ErrorCode } from './core';
-export type { IBaseModel, ILinkModel, IModel } from './core';
-export { BaseModel, LinkModel } from './core';
-
-// Models
-export { Model, LazyModel, CopyModel } from './models';
-export type { CopyOptions, CopyResult } from './models';
-
-// Query building
-export {
-  getTableName,
-  getColumnExpression,
-  createQueryBuilder,
-  applyPagination,
-  buildPkWhere,
-} from './query';
-
-// Utils
-export { sanitize, unsanitize, sanitizeIdentifier } from './utils/sanitize';
-export {
-  isSystemColumn,
-  isVirtualColumn,
-  getColumns,
-  getColumnsWithPk,
-  getPrimaryKey,
-  getColumnById,
-  getColumnByName,
-  getTableById,
-  parseFields,
-} from './utils/columnUtils';
-
-// Functions
-export { getFunction, hasFunction, getFunctionNames } from './functions';
-
-// ============================================================================
-// Model Types
-// ============================================================================
+import type { ModelContextParams } from './core/ModelContext';
+import {
+  Model,
+  createModel as createModelFromFactory,
+  createLazyModel as createLazyModelFromFactory,
+  createCopyModel as createCopyModelFromFactory,
+  createFullModel as createFullModelFromFactory,
+  createMinimalModel as createMinimalModelFromFactory,
+  type ModelOptions,
+} from './models/Model';
 
 /**
- * Available model types
- */
-export type ModelType = 'default' | 'lazy' | 'copy';
-
-/**
- * Model creation parameters
- */
-export interface CreateModelParams {
-  /** Knex database instance */
-  db: Knex;
-  /** Table ID */
-  tableId: string;
-  /** All table definitions */
-  tables: Table[];
-  /** Optional view ID */
-  viewId?: string;
-  /** Optional table alias */
-  alias?: string;
-  /** Model type */
-  type?: ModelType;
-  /** Configuration overrides */
-  config?: Partial<ModelConfig>;
-}
-
-// ============================================================================
-// Factory Functions
-// ============================================================================
-
-/**
- * Create a model instance
- *
- * @param params - Model creation parameters
- * @returns Model instance
+ * Create a model with default options (virtual columns + link operations)
  *
  * @example
  * ```typescript
- * // Default model with full features
  * const model = createModel({
  *   db: knex,
- *   tableId: 'users',
+ *   tableId: 'tbl_users',
  *   tables: allTables,
  * });
  *
- * // Lazy loading model
- * const lazyModel = createModel({
+ * const users = await model.list({ limit: 10 });
+ * ```
+ */
+export function createModel(params: ModelContextParams): Model {
+  return createModelFromFactory(params);
+}
+
+/**
+ * Create a model with lazy loading enabled
+ * Automatically loads related records when accessed
+ *
+ * @example
+ * ```typescript
+ * const model = createLazyModel({
  *   db: knex,
- *   tableId: 'users',
+ *   tableId: 'tbl_orders',
  *   tables: allTables,
- *   type: 'lazy',
  * });
  *
- * // Copy-enabled model
- * const copyModel = createModel({
+ * const orders = await model.lazy?.listWithRelations({ limit: 10 });
+ * ```
+ */
+export function createLazyModel(params: ModelContextParams): Model {
+  return createLazyModelFromFactory(params);
+}
+
+/**
+ * Create a model with copy operations enabled
+ * Supports deep record duplication with relations
+ *
+ * @example
+ * ```typescript
+ * const model = createCopyModel({
  *   db: knex,
- *   tableId: 'users',
+ *   tableId: 'tbl_templates',
  *   tables: allTables,
- *   type: 'copy',
+ * });
+ *
+ * const copy = await model.copy?.copyRecordDeep('rec_123', { deepCopy: true });
+ * ```
+ */
+export function createCopyModel(params: ModelContextParams): Model {
+  return createCopyModelFromFactory(params);
+}
+
+/**
+ * Create a model with all features enabled
+ *
+ * @example
+ * ```typescript
+ * const model = createFullModel({
+ *   db: knex,
+ *   tableId: 'tbl_projects',
+ *   tables: allTables,
  * });
  * ```
  */
-export function createModel(params: CreateModelParams): Model | LazyModel | CopyModel {
-  const { type = 'default', ...rest } = params;
-
-  switch (type) {
-    case 'lazy':
-      return new LazyModel(rest);
-    case 'copy':
-      return new CopyModel(rest);
-    default:
-      return new Model(rest);
-  }
+export function createFullModel(params: ModelContextParams): Model {
+  return createFullModelFromFactory(params);
 }
 
 /**
- * Create a lazy loading model instance
+ * Create a minimal model with only CRUD operations
+ * Best performance, no virtual columns or link support
+ *
+ * @example
+ * ```typescript
+ * const model = createMinimalModel({
+ *   db: knex,
+ *   tableId: 'tbl_logs',
+ *   tables: allTables,
+ * });
+ * ```
  */
-export function createLazyModel(params: Omit<CreateModelParams, 'type'>): LazyModel {
-  return new LazyModel(params);
-}
-
-/**
- * Create a copy-enabled model instance
- */
-export function createCopyModel(params: Omit<CreateModelParams, 'type'>): CopyModel {
-  return new CopyModel(params);
+export function createMinimalModel(params: ModelContextParams): Model {
+  return createMinimalModelFromFactory(params);
 }
 
 // ============================================================================
@@ -178,60 +118,40 @@ export function createCopyModel(params: Omit<CreateModelParams, 'type'>): CopyMo
 // ============================================================================
 
 /**
- * Create required database tables
- *
- * @param db - Knex instance
- *
- * @example
- * ```typescript
- * await createTables(knex);
- * ```
+ * Create database tables for data storage
  */
 export async function createTables(db: Knex): Promise<void> {
-  // Create main data table
-  const hasMainTable = await db.schema.hasTable(TABLE_DATA);
-  if (!hasMainTable) {
-    await db.schema.createTable(TABLE_DATA, (table) => {
-      table.string('id').primary();
-      table.string('fk_table_id').notNullable();
-      table.timestamp('created_at').defaultTo(db.fn.now());
-      table.timestamp('updated_at').defaultTo(db.fn.now());
-      table.string('created_by');
-      table.string('updated_by');
-      table.jsonb('data');
-
-      table.index(['fk_table_id']);
-      table.index(['fk_table_id', 'created_at']);
-      table.index(['fk_table_id', 'updated_at']);
+  // Main data table
+  const hasDataTable = await db.schema.hasTable(TABLE_DATA);
+  if (!hasDataTable) {
+    await db.schema.createTable(TABLE_DATA, (t) => {
+      t.string('id', 26).primary();
+      t.string('fk_table_id', 36).notNullable().index();
+      t.jsonb('data').notNullable().defaultTo('{}');
+      t.timestamp('created_at').defaultTo(db.fn.now());
+      t.timestamp('updated_at').defaultTo(db.fn.now());
+      t.string('created_by', 36).nullable();
+      t.string('updated_by', 36).nullable();
     });
-
-    await db.raw(
-      `CREATE INDEX IF NOT EXISTS idx_${TABLE_DATA}_data ON ${TABLE_DATA} USING GIN(data)`
-    );
   }
 
-  // Create relations table
-  const hasRelationsTable = await db.schema.hasTable(TABLE_RELATIONS);
-  if (!hasRelationsTable) {
-    await db.schema.createTable(TABLE_RELATIONS, (table) => {
-      table.string('id').primary();
-      table.string('fk_table_id').notNullable();
-      table.string('fk_parent_id');
-      table.string('fk_child_id');
-      table.timestamp('created_at').defaultTo(db.fn.now());
-      table.timestamp('updated_at').defaultTo(db.fn.now());
-
-      table.index(['fk_table_id', 'fk_parent_id']);
-      table.index(['fk_table_id', 'fk_child_id']);
-      table.index(['fk_table_id', 'fk_parent_id', 'fk_child_id']);
+  // Relations table for many-to-many
+  const hasRelTable = await db.schema.hasTable(TABLE_RELATIONS);
+  if (!hasRelTable) {
+    await db.schema.createTable(TABLE_RELATIONS, (t) => {
+      t.string('id', 26).primary();
+      t.string('fk_parent_id', 26).notNullable().index();
+      t.string('fk_child_id', 26).notNullable().index();
+      t.string('fk_mm_parent_column_id', 36).notNullable().index();
+      t.string('fk_mm_child_column_id', 36).nullable();
+      t.timestamp('created_at').defaultTo(db.fn.now());
+      t.unique(['fk_parent_id', 'fk_child_id', 'fk_mm_parent_column_id']);
     });
   }
 }
 
 /**
  * Drop database tables
- *
- * @param db - Knex instance
  */
 export async function dropTables(db: Knex): Promise<void> {
   await db.schema.dropTableIfExists(TABLE_RELATIONS);
@@ -239,13 +159,85 @@ export async function dropTables(db: Knex): Promise<void> {
 }
 
 // ============================================================================
-// Default Export
+// Re-exports
 // ============================================================================
 
-export default {
-  createModel,
-  createLazyModel,
-  createCopyModel,
-  createTables,
-  dropTables,
-};
+// Types
+export type {
+  Column,
+  ColumnOption,
+  Table,
+  Filter,
+  FilterOperator,
+  Sort,
+  SortDirection,
+  ListArgs,
+  GroupByArgs,
+  BulkOptions,
+  RequestContext,
+  DataRecord,
+  Record,
+} from './types';
+export { UITypes } from './types';
+
+// Config
+export {
+  TABLE_DATA,
+  TABLE_RELATIONS,
+  PAGINATION,
+  BULK_OPERATIONS,
+  type ModelConfig,
+  DEFAULT_MODEL_CONFIG,
+} from './config';
+
+// Core
+export { NcError, ErrorCode, HTTP_STATUS, type NcErrorType } from './core/NcError';
+export {
+  ModelContext,
+  createContext,
+  type IModelContext,
+  type ModelContextParams,
+} from './core/ModelContext';
+
+// Operations
+export {
+  CrudOperations,
+  createCrudOperations,
+  type ICrudOperations,
+  LinkOperations,
+  createLinkOperations,
+  type ILinkOperations,
+  VirtualColumnOperations,
+  createVirtualColumnOperations,
+  type IVirtualColumnOperations,
+  LazyOperations,
+  createLazyOperations,
+  type ILazyOperations,
+  CopyOperations,
+  createCopyOperations,
+  type ICopyOperations,
+  type CopyOptions,
+  type CopyRelationOptions,
+} from './core/operations';
+
+// Models
+export { Model, type IModel, type ModelOptions } from './models/Model';
+
+// Query utilities
+export { buildFormulaExpression } from './query/formulaBuilder';
+export { buildRollupSubquery } from './query/rollupBuilder';
+export { buildLinkCountSubquery } from './query/linkBuilder';
+export { applyConditions } from './query/conditionBuilder';
+export { applySorts } from './query/sortBuilder';
+
+// Function mappings
+export { commonFunctions, postgresFunctions, getFunction } from './functions';
+
+// Utilities
+export { sanitize } from './utils/sanitize';
+export {
+  isSystemColumn,
+  isVirtualColumn,
+  getColumnsWithPk,
+  parseFields,
+} from './utils/columnUtils';

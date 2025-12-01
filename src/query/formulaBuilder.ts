@@ -341,7 +341,7 @@ async function buildVirtualColumnRef(
         if (relationColumn) {
           const relationOptions = relationColumn.colOptions as { fk_related_model_id?: string };
           if (relationOptions?.fk_related_model_id) {
-            const relatedTable = getTableByIdOrThrow(relationOptions.fk_related_model_id, tables);
+            const relatedTable = getTableByIdOrThrow(tables, relationOptions.fk_related_model_id);
             const lookupColumn = getColumnById(options.fk_lookup_column_id, relatedTable);
             if (lookupColumn) {
               const lookupSqlCol = getColumnExpression(lookupColumn, relatedTable, 'lookup_ref');
