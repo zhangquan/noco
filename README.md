@@ -1,321 +1,406 @@
-# NocoDB DB Layer
+# NocoDB Database Layer
 
-A TypeScript database layer for NocoDB with PostgreSQL JSONB storage.
-
-## Overview
-
-This library implements a unified data access layer using PostgreSQL JSONB storage. All user data is stored in a single JSONB column, while system fields (id, timestamps, etc.) are stored in dedicated columns for optimal indexing and querying.
+A clean, extensible database abstraction layer for PostgreSQL with JSONB storage using **composition pattern**.
 
 ## Features
 
-- **Unified Storage Model**: All tables stored in `nc_bigtable` and `nc_bigtable_relations`
-- **JSONB Storage**: User fields stored in a JSONB column with GIN indexing
-- **Full CRUD Operations**: Insert, update, delete, and query operations
-- **Many-to-Many Relations**: Full MM relationship support
-- **Virtual Columns**: Formula, Rollup, Lookup, and Link columns
-- **Flexible Filtering**: Complex filter conditions with AND/OR/NOT logic
-- **Sorting**: Multi-column sorting with type casting
-- **Pagination**: Configurable limits with sensible defaults
-- **Bulk Operations**: Efficient batch insert/update/delete
-- **Lazy Loading**: On-demand loading of related data
-- **Data Copy**: Copy records and relationships
+- 🚀 **High Performance**: Optimized for PostgreSQL with JSONB storage and GIN indexes
+- 📦 **Composition Pattern**: Modular operations that can be combined flexibly
+- 🔗 **Relationship Support**: Full many-to-many relationship operations
+- 🧮 **Virtual Columns**: Support for Formula, Rollup, Lookup, and Links columns
+- 📋 **Bulk Operations**: Efficient batch insert, update, and delete
+- 🔄 **Lazy Loading**: Optional lazy loading for related records
+- 📝 **Copy Operations**: Deep copy records with relationships
 
 ## Installation
 
 ```bash
-npm install
+npm install nocodb-db-layer
 ```
 
 ## Quick Start
 
 ```typescript
+import { createModel, createTables } from 'nocodb-db-layer';
 import knex from 'knex';
-import { getBaseModel, createTables, TableType } from './src';
 
-// Create database connection
+// Setup database connection
 const db = knex({
   client: 'pg',
-  connection: {
-    host: 'localhost',
-    port: 5432,
-    database: 'nocodb',
-    user: 'postgres',
-    password: 'postgres'
-  }
+  connection: 'postgresql://localhost/mydb',
 });
 
-// Create tables (run once)
+// Create required tables
 await createTables(db);
 
-// Define your table structure
-const usersTable: TableType = {
-  id: 'users_table',
-  title: 'Users',
-  table_name: 'users',
-  columns: [
-    { id: 'name_col', title: 'Name', column_name: 'name', uidt: 'SingleLineText' },
-    { id: 'email_col', title: 'Email', column_name: 'email', uidt: 'Email' },
-    { id: 'age_col', title: 'Age', column_name: 'age', uidt: 'Number' }
-  ]
-};
+// Define your table schema
+const tables = [
+  {
+    id: 'users',
+    title: 'Users',
+    table_name: 'users',
+    columns: [
+      { id: 'name', title: 'Name', column_name: 'name', uidt: 'SingleLineText' },
+      { id: 'email', title: 'Email', column_name: 'email', uidt: 'Email' },
+    ],
+  },
+];
 
-// Create model instance
-const userModel = getBaseModel({
-  dbDriver: db,
-  modelId: usersTable.id,
-  models: [usersTable]
+// Create a model instance
+const model = createModel({
+  db,
+  tableId: 'users',
+  tables,
 });
 
-// Insert a record
-const user = await userModel.insert({
-  name: 'John Doe',
-  email: 'john@example.com',
-  age: 30
+// CRUD operations
+const user = await model.insert({ name: 'John', email: 'john@example.com' });
+const users = await model.list({ limit: 10 });
+await model.updateByPk(user.id, { name: 'Jane' });
+await model.deleteByPk(user.id);
+```
+
+## Architecture: Composition Pattern
+
+The model uses composition instead of inheritance. Each capability is a separate operation module that can be enabled or disabled:
+
+```typescript
+// Model with all features
+const fullModel = createFullModel({ db, tableId, tables });
+
+// Minimal model (only CRUD)
+const minimalModel = createMinimalModel({ db, tableId, tables });
+
+// Custom composition
+const customModel = new Model({
+  db, tableId, tables
+}, {
+  virtualColumns: true,
+  linkOperations: true,
+  lazyLoading: false,
+  copyOperations: true,
 });
+```
 
-// Query records
-const users = await userModel.list({
-  filterArr: [
-    { fk_column_id: 'age_col', comparison_op: 'gte', value: 18 }
-  ],
-  sortArr: [
-    { fk_column_id: 'name_col', direction: 'asc' }
-  ],
-  limit: 10
-});
+### Operation Modules
 
-// Update a record
-await userModel.updateByPk(user.id, { age: 31 });
+| Module | Description | Access |
+|--------|-------------|--------|
+| `CrudOperations` | Basic CRUD operations | Always included |
+| `LinkOperations` | Many-to-many relationships | `model.links` |
+| `VirtualColumnOperations` | Formula, Rollup, Lookup | `model.virtual` |
+| `LazyOperations` | Lazy loading | `model.lazy` |
+| `CopyOperations` | Record duplication | `model.copy` |
 
-// Delete a record
-await userModel.delByPk(user.id);
+## Project Structure
+
+```
+src/
+├── config/          # Configuration and constants
+│   └── index.ts     # TABLE_DATA, TABLE_RELATIONS, pagination defaults
+├── types/           # Type definitions
+│   ├── column.ts    # Column, UITypes, relation types
+│   ├── table.ts     # Table, View definitions
+│   ├── filter.ts    # Filter, Sort types
+│   ├── query.ts     # ListArgs, BulkOptions, Record
+│   └── index.ts     # Barrel export
+├── core/            # Core abstractions
+│   ├── ModelContext.ts   # Shared state for operations
+│   ├── NcError.ts        # Error handling
+│   ├── operations/       # Operation modules
+│   │   ├── CrudOperations.ts       # CRUD
+│   │   ├── LinkOperations.ts       # Many-to-many
+│   │   ├── VirtualColumnOperations.ts  # Virtual columns
+│   │   ├── LazyOperations.ts       # Lazy loading
+│   │   ├── CopyOperations.ts       # Deep copy
+│   │   └── index.ts
+│   └── index.ts
+├── models/          # Model composition
+│   ├── Model.ts     # Main model composing operations
+│   └── index.ts
+├── query/           # Query building
+│   ├── sqlBuilder.ts      # SQL expression helpers
+│   ├── conditionBuilder.ts  # Filter conditions
+│   ├── sortBuilder.ts      # Sort handling
+│   ├── formulaBuilder.ts   # Formula evaluation
+│   ├── rollupBuilder.ts    # Rollup aggregations
+│   ├── linkBuilder.ts      # Link count queries
+│   └── index.ts
+├── functions/       # SQL function mappings
+│   ├── common.ts    # Common functions (IF, AND, OR, etc.)
+│   ├── postgres.ts  # PostgreSQL-specific functions
+│   └── index.ts
+├── utils/           # Utilities
+│   ├── sanitize.ts    # Input sanitization (XSS prevention)
+│   ├── columnUtils.ts # Column helpers
+│   └── index.ts
+└── index.ts         # Main entry point
 ```
 
 ## API Reference
 
 ### Factory Functions
 
-#### `getBaseModel(params)`
+#### `createModel(params)`
 
-Creates a base model with full CRUD and link operations.
+Create a model with default options (virtual columns + links).
 
 ```typescript
-const model = getBaseModel({
-  dbDriver: knex,         // Knex instance
-  modelId: 'table_id',    // Table ID
-  models: tableDefinitions, // All table definitions
-  viewId: 'view_id',      // Optional view ID
-  type: 'json',           // 'json' | 'link' | 'lazyload' | 'copy'
-  config: {               // Optional config
-    limitDefault: 25,
-    limitMin: 1,
-    limitMax: 1000
-  }
+const model = createModel({
+  db: knex,
+  tableId: 'users',
+  tables: allTables,
 });
 ```
 
-#### `getLinkModel(params)`
+#### `createLazyModel(params)`
 
-Creates a model with only link operations (lighter weight).
+Create a model with lazy loading enabled.
 
-#### `getLazyloadModel(params)`
+```typescript
+const model = createLazyModel({ db, tableId, tables });
 
-Creates a model with lazy loading support for relations.
+// Load with relations
+const records = await model.lazy?.listWithRelations({ limit: 10 });
+```
 
-#### `getCopyModel(params)`
+#### `createCopyModel(params)`
 
-Creates a model with data copy capabilities.
+Create a model with copy operations enabled.
+
+```typescript
+const model = createCopyModel({ db, tableId, tables });
+
+// Deep copy a record
+const copy = await model.copy?.copyRecordDeep('record_id', { deepCopy: true });
+```
+
+#### `createFullModel(params)`
+
+Create a model with all features enabled.
+
+#### `createMinimalModel(params)`
+
+Create a minimal model with only CRUD operations.
 
 ### CRUD Operations
 
 ```typescript
-// Read by primary key
-const record = await model.readByPk(id, fields?);
+// Read
+const record = await model.readByPk('record_id');
+const exists = await model.exists('record_id');
+const found = await model.findOne({ where: 'name,eq,John' });
 
-// Check existence
-const exists = await model.exist(id);
+// List
+const records = await model.list({
+  fields: ['name', 'email'],
+  filterArr: [{ fk_column_id: 'name', comparison_op: 'like', value: 'John' }],
+  sortArr: [{ fk_column_id: 'name', direction: 'asc' }],
+  limit: 10,
+  offset: 0,
+});
 
-// Find one record
-const record = await model.findOne({ filterArr, sortArr });
+// Count
+const total = await model.count({ filterArr: [...] });
 
 // Insert
-const record = await model.insert(data, trx?, cookie?);
+const newRecord = await model.insert({ name: 'John', email: 'john@example.com' });
 
 // Update
-const record = await model.updateByPk(id, data, trx?, cookie?);
+const updated = await model.updateByPk('record_id', { name: 'Jane' });
 
 // Delete
-const count = await model.delByPk(id, trx?, cookie?);
-```
-
-### List Operations
-
-```typescript
-// List with filtering and sorting
-const records = await model.list({
-  fields: ['name', 'email'],           // Fields to return
-  filterArr: [                          // Filter conditions
-    { fk_column_id: 'col_id', comparison_op: 'eq', value: 'test' }
-  ],
-  sortArr: [                            // Sort configuration
-    { fk_column_id: 'col_id', direction: 'asc' }
-  ],
-  limit: 25,                            // Page size
-  offset: 0                             // Page offset
-});
-
-// Count records
-const count = await model.count({ filterArr });
-
-// Group by
-const groups = await model.groupBy({
-  column_name: 'status',
-  aggregation: 'count'
-});
+await model.deleteByPk('record_id');
 ```
 
 ### Bulk Operations
 
 ```typescript
-// Bulk insert (with chunking)
-const records = await model.bulkInsert(dataArray, {
-  chunkSize: 100,
-  cookie: { user: { id: 'user_id' } }
-});
+// Bulk insert
+const records = await model.bulkInsert([
+  { name: 'User 1' },
+  { name: 'User 2' },
+], { chunkSize: 100 });
 
 // Bulk update
-const records = await model.bulkUpdate(dataArrayWithIds);
-
-// Bulk update all matching
-const count = await model.bulkUpdateAll(
-  { filterArr },
-  updateData
-);
+await model.bulkUpdate([
+  { id: 'id1', name: 'Updated 1' },
+  { id: 'id2', name: 'Updated 2' },
+]);
 
 // Bulk delete
-const count = await model.bulkDelete(ids);
-
-// Bulk delete all matching
-const count = await model.bulkDeleteAll({ filterArr });
+await model.bulkDelete(['id1', 'id2', 'id3']);
 ```
 
 ### Link Operations (Many-to-Many)
 
 ```typescript
+// Access link operations via model.links
+const linkOps = model.links;
+
 // List linked records
-const children = await model.mmList({
-  colId: 'link_column_id',
-  parentRowId: 'parent_id'
-}, { limit: 10 });
+const linked = await linkOps.mmList(column, { parentId: 'parent_id' });
 
 // Count linked records
-const count = await model.mmListCount({
-  colId: 'link_column_id',
-  parentRowId: 'parent_id'
+const count = await linkOps.mmListCount(column, { parentId: 'parent_id' });
+
+// Link records
+await linkOps.mmLink(column, ['child_id_1', 'child_id_2'], 'parent_id');
+
+// Unlink records
+await linkOps.mmUnlink(column, ['child_id_1'], 'parent_id');
+
+// List excluded (unlinked) records
+const excluded = await linkOps.mmExcludedList(column, { parentId: 'parent_id' });
+```
+
+### Lazy Loading
+
+```typescript
+const model = createLazyModel({ db, tableId, tables });
+
+// List with pre-loaded relations
+const records = await model.lazy?.listWithRelations({ limit: 10 });
+
+// Read single record with relations
+const record = await model.lazy?.readByPkWithRelations('record_id');
+
+// Manually load relations for existing records
+const withRelations = await model.lazy?.loadRelations(records);
+```
+
+### Copy Operations
+
+```typescript
+const model = createCopyModel({ db, tableId, tables });
+
+// Deep copy a single record
+const copy = await model.copy?.copyRecordDeep('record_id', {
+  copyRelations: true,
+  deepCopy: true,
+  maxDepth: 3,
+  excludeColumns: ['sensitive_field'],
 });
 
-// Get unlinked records
-const excluded = await model.getMmChildrenExcludedList({
-  colId: 'link_column_id',
-  parentRowId: 'parent_id'
+// Copy multiple records
+const copies = await model.copy?.copyRecordsDeep(['id1', 'id2'], {
+  copyRelations: true,
 });
 
-// Add link
-await model.addChild({
-  colId: 'link_column_id',
-  rowId: 'parent_id',
-  childId: 'child_id'
-});
-
-// Remove link
-await model.removeChild({
-  colId: 'link_column_id',
-  rowId: 'parent_id',
-  childId: 'child_id'
-});
-
-// Check if linked
-const isLinked = await model.hasChild({
-  colId: 'link_column_id',
-  parentRowId: 'parent_id',
-  childRowId: 'child_id'
+// Copy relations between records
+await model.copy?.copyRelations('source_id', 'target_id', {
+  deepCopy: false,  // Just link, don't duplicate
 });
 ```
 
-### Filter Operators
+### Virtual Column Operations
 
-| Operator | Description |
-|----------|-------------|
-| `eq` | Equals |
-| `neq` | Not equals |
-| `lt` | Less than |
-| `lte` | Less than or equals |
-| `gt` | Greater than |
-| `gte` | Greater than or equals |
-| `like` | Contains (case-insensitive) |
-| `nlike` | Does not contain |
-| `null` | Is null |
-| `notnull` | Is not null |
-| `empty` | Is empty (null or '') |
-| `notempty` | Is not empty |
-| `in` | In list |
-| `notin` | Not in list |
-| `between` | Between two values |
-| `allof` | Contains all (MultiSelect) |
-| `anyof` | Contains any (MultiSelect) |
+```typescript
+// Virtual columns are automatically included in queries when enabled
+const model = createModel({ db, tableId, tables });
 
-### Column Types (UITypes)
+// Formula, Rollup, Lookup, and Link count columns
+// are computed automatically in list/read operations
+const records = await model.list();
 
-- `ID`, `SingleLineText`, `LongText`
-- `Number`, `Decimal`, `Currency`, `Percent`, `Rating`
-- `Checkbox`
-- `Date`, `DateTime`, `Time`, `Duration`
-- `Email`, `PhoneNumber`, `URL`
-- `SingleSelect`, `MultiSelect`
-- `Attachment`, `JSON`
-- `Formula`, `Rollup`, `Lookup`
-- `LinkToAnotherRecord`, `Links`
-- `User`, `CreatedBy`, `LastModifiedBy`
-- `CreatedTime`, `LastModifiedTime`
-- `AutoNumber`, `Barcode`, `QrCode`
-- `GeoData`, `Geometry`
+// Access virtual column operations directly
+const virtualOps = model.virtual;
+const virtualColumns = virtualOps?.getVirtualColumns();
+```
+
+## Model Options
+
+```typescript
+interface ModelOptions {
+  virtualColumns?: boolean;   // Formula, Rollup, Lookup support
+  linkOperations?: boolean;   // Many-to-many operations
+  lazyLoading?: boolean;      // Lazy loading for relations
+  copyOperations?: boolean;   // Deep copy functionality
+}
+
+// Custom model configuration
+const model = new Model({
+  db,
+  tableId: 'users',
+  tables,
+  config: {
+    limitDefault: 25,
+    limitMin: 1,
+    limitMax: 1000,
+  },
+}, {
+  virtualColumns: true,
+  linkOperations: true,
+  lazyLoading: true,
+  copyOperations: true,
+});
+```
 
 ## Database Schema
 
-### nc_bigtable
+The library uses two tables:
 
-```sql
-CREATE TABLE nc_bigtable (
-  id VARCHAR(26) PRIMARY KEY,      -- ULID
-  fk_table_id VARCHAR(26) NOT NULL,-- Table identifier
-  created_at TIMESTAMP,
-  updated_at TIMESTAMP,
-  created_by VARCHAR(26),
-  updated_by VARCHAR(26),
-  data JSONB                        -- User data
-);
+### `nc_bigtable` - Main data table
+
+| Column | Type | Description |
+|--------|------|-------------|
+| id | VARCHAR | Primary key (ULID) |
+| fk_table_id | VARCHAR | Table identifier |
+| created_at | TIMESTAMP | Creation time |
+| updated_at | TIMESTAMP | Last update time |
+| created_by | VARCHAR | Creator user ID |
+| updated_by | VARCHAR | Last updater user ID |
+| data | JSONB | Row data |
+
+### `nc_bigtable_relations` - Relations table
+
+| Column | Type | Description |
+|--------|------|-------------|
+| id | VARCHAR | Primary key (ULID) |
+| fk_parent_id | VARCHAR | Parent record ID |
+| fk_child_id | VARCHAR | Child record ID |
+| fk_mm_parent_column_id | VARCHAR | Parent link column ID |
+| fk_mm_child_column_id | VARCHAR | Child link column ID |
+| created_at | TIMESTAMP | Creation time |
+
+## Supported Column Types
+
+### Regular Columns
+- SingleLineText, LongText
+- Number, Decimal, Currency, Percent, Rating
+- Checkbox
+- Date, DateTime, Time, Duration
+- Email, PhoneNumber, URL
+- SingleSelect, MultiSelect
+- Attachment, JSON
+- User
+
+### Virtual Columns
+- **Formula**: Computed columns with SQL expressions
+- **Rollup**: Aggregations across relations
+- **Lookup**: Values from related records
+- **Links**: Link count
+
+## Error Handling
+
+```typescript
+import { NcError, ErrorCode } from 'nocodb-db-layer';
+
+try {
+  await model.readByPk('nonexistent');
+} catch (error) {
+  if (error instanceof NcError) {
+    console.log(error.code);        // ErrorCode.NOT_FOUND
+    console.log(error.statusCode);  // 404
+    console.log(error.details);     // { id: 'nonexistent' }
+  }
+}
+
+// Use static factory methods
+NcError.notFound('Record not found');
+NcError.badRequest('Invalid input');
+NcError.validationError('Field required', { field: 'name' });
 ```
-
-### nc_bigtable_relations
-
-```sql
-CREATE TABLE nc_bigtable_relations (
-  id VARCHAR(26) PRIMARY KEY,
-  fk_table_id VARCHAR(26) NOT NULL,-- MM table identifier
-  fk_parent_id VARCHAR(26),
-  fk_child_id VARCHAR(26),
-  created_at TIMESTAMP,
-  updated_at TIMESTAMP
-);
-```
-
-## Performance Tips
-
-1. **GIN Indexes**: Use `@>` operator for JSONB containment queries
-2. **Expression Indexes**: Create indexes on frequently queried JSONB fields
-3. **Partial Indexes**: Use WHERE clauses for table-specific indexes
-4. **Pagination**: Use cursor-based pagination for large datasets
-5. **Bulk Operations**: Use `chunkSize` option for large batches
 
 ## License
 
