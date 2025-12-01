@@ -1,93 +1,20 @@
-import type { Knex } from 'knex';
-import { JSONModelSqlImp } from './impl/JSONModelSqlImp';
-import { JSONLinkModelSql } from './impl/JSONLinkModelSql';
-import { LazyloadLinkModelSql } from './impl/LazyloadLinkModelSql';
-import { CopySqlImp } from './impl/CopySqlImp';
-import type { BaseModelSql } from './interface/BaseModelSql';
-import type { LinkModelSql } from './interface/LinkModelSql';
-import type { TableType, ModelConfig } from './interface/types';
-
-// ========================================
-// Re-exports
-// ========================================
-
-// Interfaces
-export * from './interface/types';
-export * from './interface/BaseModelSql';
-export * from './interface/LinkModelSql';
-export * from './interface/NcError';
-
-// Abstract classes
-export * from './abstract/AbstractBaseModelSql';
-export * from './abstract/AbstractLinkModelSql';
-
-// Implementations
-export * from './impl/JSONModelSqlImp';
-export * from './impl/JSONLinkModelSql';
-export * from './impl/LazyloadLinkModelSql';
-export * from './impl/CopySqlImp';
-
-// Helpers
-export * from './helpers/sanitize';
-export * from './helpers/queryBuilderHelper';
-export * from './helpers/condition';
-export * from './helpers/sortBuilder';
-
-// Query builders
-export * from './queryBuilder/formulaQueryBuilderV2';
-export * from './queryBuilder/genRollupSelectV2';
-export * from './queryBuilder/genLinkCountToSelect';
-
-// Function mappings
-export * from './functionMappings/commonFns';
-export * from './functionMappings/pg';
-
-// ========================================
-// Model Types
-// ========================================
-
 /**
- * Available model types
- */
-export type ModelType = 'json' | 'link' | 'lazyload' | 'copy';
-
-/**
- * Factory function parameters
- */
-export interface GetBaseModelParams {
-  /** Database driver (Knex instance) */
-  dbDriver: Knex;
-  /** Model/table ID */
-  modelId: string;
-  /** All models/tables definitions */
-  models: TableType[];
-  /** Optional view ID */
-  viewId?: string;
-  /** Optional table alias for queries */
-  alias?: string;
-  /** Model type to create */
-  type?: ModelType;
-  /** Optional configuration overrides */
-  config?: Partial<ModelConfig>;
-}
-
-// ========================================
-// Factory Function
-// ========================================
-
-/**
- * Get a base model instance
+ * NocoDB Database Layer
  *
- * @param params - Parameters for model creation
- * @returns BaseModelSql & LinkModelSql implementation
+ * A clean, extensible database abstraction layer for PostgreSQL with JSONB storage.
  *
  * @example
  * ```typescript
- * const model = getBaseModel({
- *   dbDriver: knex,
- *   modelId: 'table_xyz',
- *   models: allTableDefinitions,
- *   type: 'json' // default
+ * import { createModel, createTables } from 'nocodb-db-layer';
+ *
+ * // Setup database tables
+ * await createTables(knex);
+ *
+ * // Create a model instance
+ * const model = createModel({
+ *   db: knex,
+ *   tableId: 'table_xyz',
+ *   tables: allTableDefinitions,
  * });
  *
  * // CRUD operations
@@ -95,116 +22,205 @@ export interface GetBaseModelParams {
  * const records = await model.list({ limit: 10 });
  * await model.updateByPk(record.id, { name: 'Jane' });
  *
- * // Link operations (if using 'json' or 'link' type)
- * await model.mmList({ colId: 'link_col_id', parentRowId: record.id });
- * await model.addChild({ colId: 'link_col_id', rowId: record.id, childId: 'child_id' });
+ * // Link operations
+ * await model.addLink({ colId: 'link_col', rowId: record.id, childId: 'child_id' });
+ * const linked = await model.mmList({ colId: 'link_col', parentRowId: record.id });
+ * ```
+ *
+ * @module nocodb-db-layer
+ */
+
+import type { Knex } from 'knex';
+import { Model, LazyModel, CopyModel } from './models';
+import type { Table } from './types';
+import { TABLE_DATA, TABLE_RELATIONS, ModelConfig } from './config';
+
+// ============================================================================
+// Re-exports
+// ============================================================================
+
+// Types
+export * from './types';
+
+// Config
+export { TABLE_DATA, TABLE_RELATIONS, PAGINATION, BULK_OPERATIONS, DEFAULT_MODEL_CONFIG } from './config';
+export type { ModelConfig } from './config';
+
+// Core
+export { NcError, ErrorCode } from './core';
+export type { IBaseModel, ILinkModel, IModel } from './core';
+export { BaseModel, LinkModel } from './core';
+
+// Models
+export { Model, LazyModel, CopyModel } from './models';
+export type { CopyOptions, CopyResult } from './models';
+
+// Query building
+export {
+  getTableName,
+  getColumnExpression,
+  createQueryBuilder,
+  applyPagination,
+  buildPkWhere,
+} from './query';
+
+// Utils
+export { sanitize, unsanitize, sanitizeIdentifier } from './utils/sanitize';
+export {
+  isSystemColumn,
+  isVirtualColumn,
+  getColumns,
+  getColumnsWithPk,
+  getPrimaryKey,
+  getColumnById,
+  getColumnByName,
+  getTableById,
+  parseFields,
+} from './utils/columnUtils';
+
+// Functions
+export { getFunction, hasFunction, getFunctionNames } from './functions';
+
+// ============================================================================
+// Model Types
+// ============================================================================
+
+/**
+ * Available model types
+ */
+export type ModelType = 'default' | 'lazy' | 'copy';
+
+/**
+ * Model creation parameters
+ */
+export interface CreateModelParams {
+  /** Knex database instance */
+  db: Knex;
+  /** Table ID */
+  tableId: string;
+  /** All table definitions */
+  tables: Table[];
+  /** Optional view ID */
+  viewId?: string;
+  /** Optional table alias */
+  alias?: string;
+  /** Model type */
+  type?: ModelType;
+  /** Configuration overrides */
+  config?: Partial<ModelConfig>;
+}
+
+// ============================================================================
+// Factory Functions
+// ============================================================================
+
+/**
+ * Create a model instance
+ *
+ * @param params - Model creation parameters
+ * @returns Model instance
+ *
+ * @example
+ * ```typescript
+ * // Default model with full features
+ * const model = createModel({
+ *   db: knex,
+ *   tableId: 'users',
+ *   tables: allTables,
+ * });
+ *
+ * // Lazy loading model
+ * const lazyModel = createModel({
+ *   db: knex,
+ *   tableId: 'users',
+ *   tables: allTables,
+ *   type: 'lazy',
+ * });
+ *
+ * // Copy-enabled model
+ * const copyModel = createModel({
+ *   db: knex,
+ *   tableId: 'users',
+ *   tables: allTables,
+ *   type: 'copy',
+ * });
  * ```
  */
-export function getBaseModel(params: GetBaseModelParams): BaseModelSql & LinkModelSql {
-  const { type = 'json', ...rest } = params;
+export function createModel(params: CreateModelParams): Model | LazyModel | CopyModel {
+  const { type = 'default', ...rest } = params;
 
   switch (type) {
-    case 'json':
-      return new JSONModelSqlImp(rest);
-
-    case 'link':
-      return new JSONLinkModelSql(rest) as unknown as BaseModelSql & LinkModelSql;
-
-    case 'lazyload':
-      return new LazyloadLinkModelSql(rest);
-
+    case 'lazy':
+      return new LazyModel(rest);
     case 'copy':
-      return new CopySqlImp(rest);
-
+      return new CopyModel(rest);
     default:
-      return new JSONModelSqlImp(rest);
+      return new Model(rest);
   }
 }
 
 /**
- * Get a link model instance (only link operations)
- *
- * @param params - Parameters for model creation
- * @returns LinkModelSql implementation
+ * Create a lazy loading model instance
  */
-export function getLinkModel(params: Omit<GetBaseModelParams, 'type'>): LinkModelSql {
-  return new JSONLinkModelSql(params);
+export function createLazyModel(params: Omit<CreateModelParams, 'type'>): LazyModel {
+  return new LazyModel(params);
 }
 
 /**
- * Get a lazy loading model instance
- *
- * @param params - Parameters for model creation
- * @returns LazyloadLinkModelSql implementation
+ * Create a copy-enabled model instance
  */
-export function getLazyloadModel(
-  params: Omit<GetBaseModelParams, 'type'>
-): LazyloadLinkModelSql {
-  return new LazyloadLinkModelSql(params);
+export function createCopyModel(params: Omit<CreateModelParams, 'type'>): CopyModel {
+  return new CopyModel(params);
 }
 
-/**
- * Get a copy-enabled model instance
- *
- * @param params - Parameters for model creation
- * @returns CopySqlImp implementation
- */
-export function getCopyModel(params: Omit<GetBaseModelParams, 'type'>): CopySqlImp {
-  return new CopySqlImp(params);
-}
-
-// ========================================
+// ============================================================================
 // Database Setup
-// ========================================
+// ============================================================================
 
 /**
- * Create the required database tables
+ * Create required database tables
  *
- * @param dbDriver - Knex instance
- * @returns Promise that resolves when tables are created
+ * @param db - Knex instance
  *
  * @example
  * ```typescript
  * await createTables(knex);
  * ```
  */
-export async function createTables(dbDriver: Knex): Promise<void> {
+export async function createTables(db: Knex): Promise<void> {
   // Create main data table
-  const hasMainTable = await dbDriver.schema.hasTable('nc_bigtable');
+  const hasMainTable = await db.schema.hasTable(TABLE_DATA);
   if (!hasMainTable) {
-    await dbDriver.schema.createTable('nc_bigtable', (table) => {
+    await db.schema.createTable(TABLE_DATA, (table) => {
       table.string('id').primary();
       table.string('fk_table_id').notNullable();
-      table.timestamp('created_at').defaultTo(dbDriver.fn.now());
-      table.timestamp('updated_at').defaultTo(dbDriver.fn.now());
+      table.timestamp('created_at').defaultTo(db.fn.now());
+      table.timestamp('updated_at').defaultTo(db.fn.now());
       table.string('created_by');
       table.string('updated_by');
       table.jsonb('data');
 
-      // Indexes
       table.index(['fk_table_id']);
       table.index(['fk_table_id', 'created_at']);
       table.index(['fk_table_id', 'updated_at']);
     });
 
-    // Create GIN index for JSONB
-    await dbDriver.raw(
-      'CREATE INDEX IF NOT EXISTS idx_nc_bigtable_data ON nc_bigtable USING GIN(data)'
+    await db.raw(
+      `CREATE INDEX IF NOT EXISTS idx_${TABLE_DATA}_data ON ${TABLE_DATA} USING GIN(data)`
     );
   }
 
   // Create relations table
-  const hasRelationsTable = await dbDriver.schema.hasTable('nc_bigtable_relations');
+  const hasRelationsTable = await db.schema.hasTable(TABLE_RELATIONS);
   if (!hasRelationsTable) {
-    await dbDriver.schema.createTable('nc_bigtable_relations', (table) => {
+    await db.schema.createTable(TABLE_RELATIONS, (table) => {
       table.string('id').primary();
       table.string('fk_table_id').notNullable();
       table.string('fk_parent_id');
       table.string('fk_child_id');
-      table.timestamp('created_at').defaultTo(dbDriver.fn.now());
-      table.timestamp('updated_at').defaultTo(dbDriver.fn.now());
+      table.timestamp('created_at').defaultTo(db.fn.now());
+      table.timestamp('updated_at').defaultTo(db.fn.now());
 
-      // Indexes
       table.index(['fk_table_id', 'fk_parent_id']);
       table.index(['fk_table_id', 'fk_child_id']);
       table.index(['fk_table_id', 'fk_parent_id', 'fk_child_id']);
@@ -213,25 +229,23 @@ export async function createTables(dbDriver: Knex): Promise<void> {
 }
 
 /**
- * Drop the database tables
+ * Drop database tables
  *
- * @param dbDriver - Knex instance
- * @returns Promise that resolves when tables are dropped
+ * @param db - Knex instance
  */
-export async function dropTables(dbDriver: Knex): Promise<void> {
-  await dbDriver.schema.dropTableIfExists('nc_bigtable_relations');
-  await dbDriver.schema.dropTableIfExists('nc_bigtable');
+export async function dropTables(db: Knex): Promise<void> {
+  await db.schema.dropTableIfExists(TABLE_RELATIONS);
+  await db.schema.dropTableIfExists(TABLE_DATA);
 }
 
-// ========================================
+// ============================================================================
 // Default Export
-// ========================================
+// ============================================================================
 
 export default {
-  getBaseModel,
-  getLinkModel,
-  getLazyloadModel,
-  getCopyModel,
+  createModel,
+  createLazyModel,
+  createCopyModel,
   createTables,
   dropTables,
 };
