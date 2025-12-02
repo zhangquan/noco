@@ -1,6 +1,6 @@
-# NocoDB Database Layer
+# JSONB Model
 
-A clean, extensible database abstraction layer for PostgreSQL with JSONB storage using **composition pattern**.
+A flexible, extensible database abstraction layer for PostgreSQL with JSONB storage using **composition pattern**.
 
 ## Features
 
@@ -15,13 +15,13 @@ A clean, extensible database abstraction layer for PostgreSQL with JSONB storage
 ## Installation
 
 ```bash
-npm install nocodb-db-layer
+npm install jsonb-model
 ```
 
 ## Quick Start
 
 ```typescript
-import { createModel, initDatabase } from 'nocodb-db-layer';
+import { createModel, initDatabase } from 'jsonb-model';
 import knex from 'knex';
 
 // Setup database connection
@@ -384,12 +384,12 @@ The library uses two tables:
 ## Error Handling
 
 ```typescript
-import { NcError, ErrorCode } from 'nocodb-db-layer';
+import { ModelError, ErrorCode } from 'jsonb-model';
 
 try {
   await model.readByPk('nonexistent');
 } catch (error) {
-  if (error instanceof NcError) {
+  if (error instanceof ModelError) {
     console.log(error.code);        // ErrorCode.NOT_FOUND
     console.log(error.statusCode);  // 404
     console.log(error.details);     // { id: 'nonexistent' }
@@ -397,9 +397,9 @@ try {
 }
 
 // Use static factory methods
-NcError.notFound('Record not found');
-NcError.badRequest('Invalid input');
-NcError.validationError('Field required', { field: 'name' });
+ModelError.notFound('Record not found');
+ModelError.badRequest('Invalid input');
+ModelError.validationError('Field required', { field: 'name' });
 ```
 
 ## License

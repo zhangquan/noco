@@ -10,12 +10,12 @@
 /**
  * Main data table for storing records as JSONB
  */
-export const TABLE_DATA = 'nc_data';
+export const TABLE_DATA = 'jm_data';
 
 /**
  * Record links table for relationships between records
  */
-export const TABLE_LINKS = 'nc_record_links';
+export const TABLE_LINKS = 'jm_record_links';
 
 /**
  * @deprecated Use TABLE_LINKS instead

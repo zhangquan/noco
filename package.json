@@ -1,7 +1,7 @@
 {
-  "name": "nocodb-db-layer",
+  "name": "jsonb-model",
   "version": "1.0.0",
-  "description": "NocoDB Database Layer with PostgreSQL JSONB storage",
+  "description": "Flexible PostgreSQL JSONB model layer with virtual columns and relationships",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
   "scripts": {
@@ -11,11 +11,13 @@
     "format": "prettier --write \"src/**/*.ts\""
   },
   "keywords": [
-    "nocodb",
-    "database",
     "postgresql",
     "jsonb",
-    "knex"
+    "model",
+    "orm",
+    "knex",
+    "database",
+    "schemaless"
   ],
   "license": "MIT",
   "dependencies": {

@@ -1,81 +1,84 @@
 -- =============================================
--- NocoDB DB Layer - Initial Migration
+-- JSONB Model - Initial Migration
 -- Creates the core tables for JSONB storage
 -- =============================================
 
 -- Main data table
--- Stores all user data in a JSONB column with system fields in dedicated columns
-CREATE TABLE IF NOT EXISTS nc_bigtable (
+-- Stores all records with user data in a JSONB column
+CREATE TABLE IF NOT EXISTS jm_data (
     id VARCHAR(26) PRIMARY KEY,              -- ULID primary key
-    fk_table_id VARCHAR(26) NOT NULL,        -- Table identifier for data isolation
+    table_id VARCHAR(36) NOT NULL,           -- Table identifier for data isolation
+    data JSONB NOT NULL DEFAULT '{}',        -- All user data stored as JSONB
     created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
-    created_by VARCHAR(26),                  -- User ID who created the record
-    updated_by VARCHAR(26),                  -- User ID who last updated the record
-    data JSONB                               -- All user data stored as JSONB
+    created_by VARCHAR(36),                  -- User ID who created the record
+    updated_by VARCHAR(36)                   -- User ID who last updated the record
 );
 
--- Relations table (Many-to-Many junction table)
--- Stores MM relationships between records
-CREATE TABLE IF NOT EXISTS nc_bigtable_relations (
-    id VARCHAR(26) PRIMARY KEY,                    -- ULID primary key
-    fk_parent_id VARCHAR(26) NOT NULL,             -- Parent record ID
-    fk_child_id VARCHAR(26) NOT NULL,              -- Child record ID
-    fk_mm_parent_column_id VARCHAR(36) NOT NULL,   -- Parent link column ID
-    fk_mm_child_column_id VARCHAR(36),             -- Child link column ID (symmetric)
+-- Record links table
+-- Stores relationships between records
+CREATE TABLE IF NOT EXISTS jm_record_links (
+    id VARCHAR(26) PRIMARY KEY,              -- ULID primary key
+    source_record_id VARCHAR(26) NOT NULL,   -- Source record ID
+    target_record_id VARCHAR(26) NOT NULL,   -- Target record ID
+    link_field_id VARCHAR(36) NOT NULL,      -- Link field ID (defines the relationship)
+    inverse_field_id VARCHAR(36),            -- Inverse field ID (for bidirectional links)
     created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
 
 -- =============================================
--- Indexes for nc_bigtable
+-- Indexes for jm_data
 -- =============================================
 
 -- Table ID index (critical for data isolation)
-CREATE INDEX IF NOT EXISTS idx_nc_bigtable_table_id 
-ON nc_bigtable(fk_table_id);
+CREATE INDEX IF NOT EXISTS idx_jm_data_table_id 
+ON jm_data(table_id);
 
 -- Composite index for common queries (table + created_at DESC)
-CREATE INDEX IF NOT EXISTS idx_nc_bigtable_table_created 
-ON nc_bigtable(fk_table_id, created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_jm_data_table_created 
+ON jm_data(table_id, created_at DESC);
 
 -- Composite index for common queries (table + updated_at DESC)
-CREATE INDEX IF NOT EXISTS idx_nc_bigtable_table_updated 
-ON nc_bigtable(fk_table_id, updated_at DESC);
+CREATE INDEX IF NOT EXISTS idx_jm_data_table_updated 
+ON jm_data(table_id, updated_at DESC);
 
 -- GIN index for JSONB data (supports @>, ?, ?& operators)
-CREATE INDEX IF NOT EXISTS idx_nc_bigtable_data 
-ON nc_bigtable USING GIN(data);
+CREATE INDEX IF NOT EXISTS idx_jm_data_jsonb 
+ON jm_data USING GIN(data);
 
--- GIN index with jsonb_path_ops (smaller, faster, but limited operators)
-CREATE INDEX IF NOT EXISTS idx_nc_bigtable_data_path_ops 
-ON nc_bigtable USING GIN(data jsonb_path_ops);
+-- GIN index with jsonb_path_ops (smaller, faster for containment queries)
+CREATE INDEX IF NOT EXISTS idx_jm_data_jsonb_path 
+ON jm_data USING GIN(data jsonb_path_ops);
 
 -- =============================================
--- Indexes for nc_bigtable_relations
+-- Indexes for jm_record_links
 -- =============================================
 
--- Parent lookup index (by column and parent)
-CREATE INDEX IF NOT EXISTS idx_nc_relations_parent 
-ON nc_bigtable_relations(fk_mm_parent_column_id, fk_parent_id);
+-- Find targets for a source record
+CREATE INDEX IF NOT EXISTS idx_jm_links_source 
+ON jm_record_links(link_field_id, source_record_id);
 
--- Child lookup index
-CREATE INDEX IF NOT EXISTS idx_nc_relations_child 
-ON nc_bigtable_relations(fk_child_id);
+-- Find sources for a target record
+CREATE INDEX IF NOT EXISTS idx_jm_links_target 
+ON jm_record_links(link_field_id, target_record_id);
 
--- Parent ID index
-CREATE INDEX IF NOT EXISTS idx_nc_relations_parent_id 
-ON nc_bigtable_relations(fk_parent_id);
+-- For cascade delete lookups
+CREATE INDEX IF NOT EXISTS idx_jm_links_source_id 
+ON jm_record_links(source_record_id);
 
--- Unique constraint to prevent duplicate relationships
-CREATE UNIQUE INDEX IF NOT EXISTS idx_nc_relations_unique 
-ON nc_bigtable_relations(fk_parent_id, fk_child_id, fk_mm_parent_column_id);
+CREATE INDEX IF NOT EXISTS idx_jm_links_target_id 
+ON jm_record_links(target_record_id);
+
+-- Prevent duplicate links
+CREATE UNIQUE INDEX IF NOT EXISTS idx_jm_links_unique 
+ON jm_record_links(source_record_id, target_record_id, link_field_id);
 
 -- =============================================
 -- Trigger for auto-updating updated_at
 -- =============================================
 
 -- Create the trigger function
-CREATE OR REPLACE FUNCTION update_updated_at_column()
+CREATE OR REPLACE FUNCTION jm_update_timestamp()
 RETURNS TRIGGER AS $$
 BEGIN
     NEW.updated_at = NOW();
@@ -83,25 +86,25 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql;
 
--- Apply trigger to nc_bigtable
-DROP TRIGGER IF EXISTS trigger_nc_bigtable_updated_at ON nc_bigtable;
-CREATE TRIGGER trigger_nc_bigtable_updated_at
-    BEFORE UPDATE ON nc_bigtable
+-- Apply trigger to jm_data
+DROP TRIGGER IF EXISTS trigger_jm_data_updated_at ON jm_data;
+CREATE TRIGGER trigger_jm_data_updated_at
+    BEFORE UPDATE ON jm_data
     FOR EACH ROW
-    EXECUTE FUNCTION update_updated_at_column();
+    EXECUTE FUNCTION jm_update_timestamp();
 
 -- =============================================
 -- Comments
 -- =============================================
 
-COMMENT ON TABLE nc_bigtable IS 'Main data table for NocoDB - stores all user data in JSONB format';
-COMMENT ON TABLE nc_bigtable_relations IS 'Relations table for Many-to-Many relationships';
+COMMENT ON TABLE jm_data IS 'Main data table - stores all records with user data in JSONB format';
+COMMENT ON TABLE jm_record_links IS 'Record links table - stores relationships between records';
 
-COMMENT ON COLUMN nc_bigtable.id IS 'ULID primary key - globally unique, time-sortable';
-COMMENT ON COLUMN nc_bigtable.fk_table_id IS 'Table identifier - used for data isolation in single-table design';
-COMMENT ON COLUMN nc_bigtable.data IS 'JSONB column containing all user-defined fields';
+COMMENT ON COLUMN jm_data.id IS 'ULID primary key - globally unique, time-sortable';
+COMMENT ON COLUMN jm_data.table_id IS 'Table identifier - used for data isolation in single-table design';
+COMMENT ON COLUMN jm_data.data IS 'JSONB column containing all user-defined fields';
 
-COMMENT ON COLUMN nc_bigtable_relations.fk_parent_id IS 'Parent record ID in the MM relationship';
-COMMENT ON COLUMN nc_bigtable_relations.fk_child_id IS 'Child record ID in the MM relationship';
-COMMENT ON COLUMN nc_bigtable_relations.fk_mm_parent_column_id IS 'Parent link column ID - identifies which link column created this relation';
-COMMENT ON COLUMN nc_bigtable_relations.fk_mm_child_column_id IS 'Child link column ID - symmetric column on the child table';
+COMMENT ON COLUMN jm_record_links.source_record_id IS 'Source record ID - the record that initiates the link';
+COMMENT ON COLUMN jm_record_links.target_record_id IS 'Target record ID - the record being linked to';
+COMMENT ON COLUMN jm_record_links.link_field_id IS 'Link field ID - identifies which link field created this relation';
+COMMENT ON COLUMN jm_record_links.inverse_field_id IS 'Inverse field ID - symmetric field on the target table (for bidirectional links)';

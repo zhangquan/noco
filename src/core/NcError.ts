@@ -1,6 +1,6 @@
 /**
- * Error handling for NocoDB operations
- * @module core/NcError
+ * Error handling for model operations
+ * @module core/ModelError
  */
 
 // ============================================================================
@@ -8,7 +8,7 @@
 // ============================================================================
 
 /**
- * Error codes for NcError
+ * Error codes for ModelError
  */
 export enum ErrorCode {
   BAD_REQUEST = 'BAD_REQUEST',
@@ -20,11 +20,6 @@ export enum ErrorCode {
   VALIDATION_ERROR = 'VALIDATION_ERROR',
   DATABASE_ERROR = 'DATABASE_ERROR',
 }
-
-/**
- * NcError type
- */
-export type NcErrorType = NcError;
 
 /**
  * HTTP status codes mapping
@@ -41,13 +36,13 @@ export const HTTP_STATUS: Readonly<Record<ErrorCode, number>> = {
 };
 
 // ============================================================================
-// NcError Class
+// ModelError Class
 // ============================================================================
 
 /**
- * Custom error class for NocoDB operations
+ * Custom error class for model operations
  */
-export class NcError extends Error {
+export class ModelError extends Error {
   public readonly code: ErrorCode;
   public readonly statusCode: number;
   public readonly details?: Record<string, unknown>;
@@ -58,13 +53,13 @@ export class NcError extends Error {
     details?: Record<string, unknown>
   ) {
     super(message);
-    this.name = 'NcError';
+    this.name = 'ModelError';
     this.code = code;
     this.statusCode = HTTP_STATUS[code];
     this.details = details;
 
     if (Error.captureStackTrace) {
-      Error.captureStackTrace(this, NcError);
+      Error.captureStackTrace(this, ModelError);
     }
   }
 
@@ -73,35 +68,35 @@ export class NcError extends Error {
   // ==========================================================================
 
   static badRequest(message: string, details?: Record<string, unknown>): never {
-    throw new NcError(message, ErrorCode.BAD_REQUEST, details);
+    throw new ModelError(message, ErrorCode.BAD_REQUEST, details);
   }
 
   static notFound(message: string, details?: Record<string, unknown>): never {
-    throw new NcError(message, ErrorCode.NOT_FOUND, details);
+    throw new ModelError(message, ErrorCode.NOT_FOUND, details);
   }
 
   static internalError(message: string, details?: Record<string, unknown>): never {
-    throw new NcError(message, ErrorCode.INTERNAL_SERVER_ERROR, details);
+    throw new ModelError(message, ErrorCode.INTERNAL_SERVER_ERROR, details);
   }
 
   static unauthorized(message: string, details?: Record<string, unknown>): never {
-    throw new NcError(message, ErrorCode.UNAUTHORIZED, details);
+    throw new ModelError(message, ErrorCode.UNAUTHORIZED, details);
   }
 
   static forbidden(message: string, details?: Record<string, unknown>): never {
-    throw new NcError(message, ErrorCode.FORBIDDEN, details);
+    throw new ModelError(message, ErrorCode.FORBIDDEN, details);
   }
 
   static conflict(message: string, details?: Record<string, unknown>): never {
-    throw new NcError(message, ErrorCode.CONFLICT, details);
+    throw new ModelError(message, ErrorCode.CONFLICT, details);
   }
 
   static validationError(message: string, details?: Record<string, unknown>): never {
-    throw new NcError(message, ErrorCode.VALIDATION_ERROR, details);
+    throw new ModelError(message, ErrorCode.VALIDATION_ERROR, details);
   }
 
   static databaseError(message: string, details?: Record<string, unknown>): never {
-    throw new NcError(message, ErrorCode.DATABASE_ERROR, details);
+    throw new ModelError(message, ErrorCode.DATABASE_ERROR, details);
   }
 
   // ==========================================================================
@@ -112,19 +107,19 @@ export class NcError extends Error {
     const message = tableName
       ? `Record '${id}' not found in '${tableName}'`
       : `Record '${id}' not found`;
-    throw new NcError(message, ErrorCode.NOT_FOUND, { id, tableName });
+    throw new ModelError(message, ErrorCode.NOT_FOUND, { id, tableName });
   }
 
   static tableNotFound(tableId: string): never {
-    throw new NcError(`Table '${tableId}' not found`, ErrorCode.NOT_FOUND, { tableId });
+    throw new ModelError(`Table '${tableId}' not found`, ErrorCode.NOT_FOUND, { tableId });
   }
 
   static columnNotFound(columnId: string): never {
-    throw new NcError(`Column '${columnId}' not found`, ErrorCode.NOT_FOUND, { columnId });
+    throw new ModelError(`Column '${columnId}' not found`, ErrorCode.NOT_FOUND, { columnId });
   }
 
   static requiredField(fieldName: string): never {
-    throw new NcError(
+    throw new ModelError(
       `Required field '${fieldName}' is missing`,
       ErrorCode.VALIDATION_ERROR,
       { fieldName }
@@ -145,3 +140,18 @@ export class NcError extends Error {
     };
   }
 }
+
+/**
+ * @deprecated Use ModelError instead
+ */
+export const NcError = ModelError;
+
+/**
+ * ModelError type alias
+ */
+export type ModelErrorType = ModelError;
+
+/**
+ * @deprecated Use ModelErrorType instead
+ */
+export type NcErrorType = ModelError;

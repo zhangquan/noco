@@ -1,8 +1,8 @@
 /**
- * NocoDB SQL Module
- * A modular database abstraction layer for PostgreSQL with JSONB storage
+ * JSONB Model
+ * A flexible database abstraction layer for PostgreSQL with JSONB storage
  *
- * @module nocodb-sql
+ * @module jsonb-model
  */
 
 import type { Knex } from 'knex';
@@ -221,8 +221,15 @@ export {
   DEFAULT_MODEL_CONFIG,
 } from './config';
 
-// Core
-export { NcError, ErrorCode, HTTP_STATUS, type NcErrorType } from './core/NcError';
+// Core - Error handling
+export { 
+  ModelError, 
+  NcError,  // deprecated alias
+  ErrorCode, 
+  HTTP_STATUS, 
+  type ModelErrorType,
+  type NcErrorType,  // deprecated alias
+} from './core/NcError';
 export {
   ModelContext,
   createContext,
