@@ -10,12 +10,17 @@
 /**
  * Main data table for storing records as JSONB
  */
-export const TABLE_DATA = 'nc_bigtable';
+export const TABLE_DATA = 'nc_data';
 
 /**
- * Relations table for many-to-many links
+ * Record links table for relationships between records
  */
-export const TABLE_RELATIONS = 'nc_bigtable_relations';
+export const TABLE_LINKS = 'nc_record_links';
+
+/**
+ * @deprecated Use TABLE_LINKS instead
+ */
+export const TABLE_RELATIONS = TABLE_LINKS;
 
 // ============================================================================
 // Pagination Defaults
