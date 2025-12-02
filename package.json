@@ -1,7 +1,7 @@
 {
-  "name": "jsonb-model",
+  "name": "agentdb",
   "version": "1.0.0",
-  "description": "Flexible PostgreSQL JSONB model layer with virtual columns and relationships",
+  "description": "AI Agent-friendly PostgreSQL database layer with JSONB storage",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
   "scripts": {
@@ -11,13 +11,14 @@
     "format": "prettier --write \"src/**/*.ts\""
   },
   "keywords": [
+    "ai",
+    "agent",
     "postgresql",
     "jsonb",
-    "model",
-    "orm",
-    "knex",
     "database",
-    "schemaless"
+    "schema",
+    "knex",
+    "orm"
   ],
   "license": "MIT",
   "dependencies": {

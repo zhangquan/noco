@@ -32,9 +32,19 @@ import type {
   BulkOptions,
   RequestContext,
   Record,
+  SchemaDescription,
+  TableOverview,
+  RelationshipInfo,
+  RelationType,
+  BulkWriteOperation,
+  BulkWriteResult,
+  BulkWriteOperationResult,
 } from '../types';
+import { UITypes } from '../types';
+import { getColumnsWithPk } from '../utils/columnUtils';
 import { parseFields } from '../utils/columnUtils';
 import { parseRow } from '../utils/rowParser';
+import { parseSimpleFilter, parseSimpleSort } from '../utils/filterParser';
 import { buildSelectExpressions, buildPkWhere, applyPagination } from '../query/sqlBuilder';
 import { applyConditions, parseWhereString } from '../query/conditionBuilder';
 import { applySorts, parseSortString } from '../query/sortBuilder';
@@ -80,6 +90,47 @@ export interface IModel extends ICrudOperations {
   
   // Copy operations (optional)
   readonly copy?: ICopyOperations;
+  
+  // === AI-friendly schema description ===
+  
+  /**
+   * Get complete schema description for current table
+   * Helps AI understand table structure, columns, and relationships
+   */
+  describeSchema(): SchemaDescription;
+  
+  /**
+   * Get overview of all available tables
+   * Helps AI understand the data model
+   */
+  describeAllTables(): TableOverview[];
+  
+  // === Transaction helpers ===
+  
+  /**
+   * Execute operations atomically within a transaction
+   * Automatically commits on success, rolls back on failure
+   * 
+   * @example
+   * await model.atomic(async (m) => {
+   *   const user = await m.insert({ name: 'John' });
+   *   await m.links?.mmLink(col, ['order1'], user.id);
+   *   return user;
+   * });
+   */
+  atomic<T>(fn: (model: IModel) => Promise<T>): Promise<T>;
+  
+  /**
+   * Execute mixed bulk operations atomically
+   * 
+   * @example
+   * await model.bulkWrite([
+   *   { op: 'insert', data: { name: 'A' } },
+   *   { op: 'update', id: 'xxx', data: { status: 'active' } },
+   *   { op: 'delete', id: 'yyy' }
+   * ]);
+   */
+  bulkWrite(operations: BulkWriteOperation[]): Promise<BulkWriteResult>;
 }
 
 // ============================================================================
@@ -146,6 +197,97 @@ export class Model implements IModel {
 
   get copy(): ICopyOperations | undefined {
     return this.copyOps;
+  }
+
+  // ==========================================================================
+  // Schema Description (AI-friendly)
+  // ==========================================================================
+
+  /**
+   * Get complete schema description for current table
+   */
+  describeSchema(): SchemaDescription {
+    const table = this.context.table;
+    const columns = table.columns || [];
+    
+    return {
+      table: {
+        id: table.id,
+        title: table.title,
+        description: table.description,
+        hints: table.hints,
+      },
+      columns: columns.map((col) => ({
+        id: col.id,
+        title: col.title,
+        type: col.uidt as string,
+        description: col.description,
+        required: col.required || col.constraints?.required || false,
+        examples: col.examples,
+        constraints: col.constraints,
+      })),
+      relationships: this.extractRelationships(table, columns),
+    };
+  }
+
+  /**
+   * Get overview of all available tables
+   */
+  describeAllTables(): TableOverview[] {
+    return this.context.tables.map((t) => {
+      const columns = t.columns || [];
+      const linkColumns = columns.filter(
+        (c) => c.uidt === UITypes.Links || c.uidt === UITypes.LinkToAnotherRecord
+      );
+      
+      return {
+        id: t.id,
+        title: t.title,
+        description: t.description,
+        columnCount: columns.length,
+        relationCount: linkColumns.length,
+      };
+    });
+  }
+
+  /**
+   * Extract relationship information from link columns
+   */
+  protected extractRelationships(table: Table, columns: Column[]): RelationshipInfo[] {
+    const relationships: RelationshipInfo[] = [];
+    
+    for (const col of columns) {
+      if (col.uidt !== UITypes.Links && col.uidt !== UITypes.LinkToAnotherRecord) {
+        continue;
+      }
+      
+      const options = col.colOptions || col.options;
+      if (!options) continue;
+      
+      const opts = typeof options === 'string' ? JSON.parse(options) : options;
+      const relatedTableId = opts?.fk_related_model_id;
+      
+      if (!relatedTableId) continue;
+      
+      const relatedTable = this.context.tables.find((t) => t.id === relatedTableId);
+      if (!relatedTable) continue;
+      
+      // Determine relationship type
+      let type: RelationType = 'mm';
+      if (opts?.type === 'hm') type = 'hm';
+      else if (opts?.type === 'bt') type = 'bt';
+      
+      relationships.push({
+        columnId: col.id,
+        columnTitle: col.title,
+        relatedTableId: relatedTable.id,
+        relatedTableTitle: relatedTable.title,
+        type,
+        description: col.description,
+      });
+    }
+    
+    return relationships;
   }
 
   // ==========================================================================
@@ -267,6 +409,184 @@ export class Model implements IModel {
   }
 
   // ==========================================================================
+  // Transaction Helpers (AI-friendly)
+  // ==========================================================================
+
+  /**
+   * Execute operations atomically within a transaction
+   * Automatically commits on success, rolls back on failure
+   */
+  async atomic<T>(fn: (model: IModel) => Promise<T>): Promise<T> {
+    return this.context.db.transaction(async (trx) => {
+      // Create a new model instance with the transaction context
+      const atomicModel = this.createAtomicModel(trx);
+      return fn(atomicModel);
+    });
+  }
+
+  /**
+   * Execute mixed bulk operations atomically
+   */
+  async bulkWrite(operations: BulkWriteOperation[]): Promise<BulkWriteResult> {
+    const result: BulkWriteResult = {
+      success: true,
+      results: [],
+      insertedIds: [],
+      updatedCount: 0,
+      deletedCount: 0,
+      linkedCount: 0,
+      unlinkedCount: 0,
+    };
+
+    if (operations.length === 0) {
+      return result;
+    }
+
+    try {
+      await this.context.db.transaction(async (trx) => {
+        for (const op of operations) {
+          const opResult = await this.executeWriteOperation(op, trx);
+          result.results.push(opResult);
+          
+          if (!opResult.success) {
+            result.success = false;
+            throw new Error(opResult.error || 'Operation failed');
+          }
+          
+          // Update counts
+          switch (op.op) {
+            case 'insert':
+              if (opResult.id) result.insertedIds.push(opResult.id);
+              break;
+            case 'update':
+              result.updatedCount++;
+              break;
+            case 'delete':
+              result.deletedCount++;
+              break;
+            case 'link':
+              result.linkedCount += op.childIds.length;
+              break;
+            case 'unlink':
+              result.unlinkedCount += op.childIds.length;
+              break;
+          }
+        }
+      });
+    } catch (error) {
+      result.success = false;
+    }
+
+    return result;
+  }
+
+  /**
+   * Create a model instance that uses a transaction
+   */
+  protected createAtomicModel(trx: Knex.Transaction): IModel {
+    // Create a proxy that wraps write operations with the transaction
+    const self = this;
+    
+    return {
+      ...this,
+      context: this.context,
+      options: this.options,
+      links: this.linkOps,
+      virtual: this.virtualOps,
+      lazy: this.lazyOps,
+      copy: this.copyOps,
+      
+      // Override write operations to use transaction
+      async insert(data: Record, _trx?: Knex.Transaction, ctx?: RequestContext) {
+        return self.crudOps.insert(data, trx, ctx);
+      },
+      async updateByPk(id: string, data: Record, _trx?: Knex.Transaction, ctx?: RequestContext) {
+        return self.crudOps.updateByPk(id, data, trx, ctx);
+      },
+      async deleteByPk(id: string, _trx?: Knex.Transaction, ctx?: RequestContext) {
+        return self.crudOps.deleteByPk(id, trx, ctx);
+      },
+      async bulkInsert(data: Record[], options?: BulkOptions) {
+        return self.crudOps.bulkInsert(data, { ...options, trx });
+      },
+      async bulkUpdate(data: Record[], options?: BulkOptions) {
+        return self.crudOps.bulkUpdate(data, { ...options, trx });
+      },
+      async bulkDelete(ids: string[], options?: BulkOptions) {
+        return self.crudOps.bulkDelete(ids, { ...options, trx });
+      },
+      
+      // Read operations pass through (no transaction needed)
+      readByPk: self.readByPk.bind(self),
+      exists: self.exists.bind(self),
+      findOne: self.findOne.bind(self),
+      list: self.list.bind(self),
+      count: self.count.bind(self),
+      groupBy: self.groupBy.bind(self),
+      bulkUpdateAll: self.bulkUpdateAll.bind(self),
+      bulkDeleteAll: self.bulkDeleteAll.bind(self),
+      getQueryBuilder: self.getQueryBuilder.bind(self),
+      getInsertBuilder: self.getInsertBuilder.bind(self),
+      describeSchema: self.describeSchema.bind(self),
+      describeAllTables: self.describeAllTables.bind(self),
+      atomic: self.atomic.bind(self),
+      bulkWrite: self.bulkWrite.bind(self),
+    } as IModel;
+  }
+
+  /**
+   * Execute a single write operation
+   */
+  protected async executeWriteOperation(
+    op: BulkWriteOperation,
+    trx: Knex.Transaction
+  ): Promise<BulkWriteOperationResult> {
+    try {
+      switch (op.op) {
+        case 'insert': {
+          const record = await this.crudOps.insert(op.data, trx);
+          return { op: 'insert', success: true, id: record.id as string };
+        }
+        case 'update': {
+          await this.crudOps.updateByPk(op.id, op.data, trx);
+          return { op: 'update', success: true, id: op.id };
+        }
+        case 'delete': {
+          await this.crudOps.deleteByPk(op.id, trx);
+          return { op: 'delete', success: true, id: op.id };
+        }
+        case 'link': {
+          if (!this.linkOps) {
+            return { op: 'link', success: false, error: 'Link operations not enabled' };
+          }
+          const column = getColumnsWithPk(this.context.table).find((c) => c.id === op.columnId);
+          if (!column) {
+            return { op: 'link', success: false, error: `Column not found: ${op.columnId}` };
+          }
+          await this.linkOps.mmLink(column, op.childIds, op.parentId, trx);
+          return { op: 'link', success: true };
+        }
+        case 'unlink': {
+          if (!this.linkOps) {
+            return { op: 'unlink', success: false, error: 'Link operations not enabled' };
+          }
+          const column = getColumnsWithPk(this.context.table).find((c) => c.id === op.columnId);
+          if (!column) {
+            return { op: 'unlink', success: false, error: `Column not found: ${op.columnId}` };
+          }
+          await this.linkOps.mmUnlink(column, op.childIds, op.parentId, trx);
+          return { op: 'unlink', success: true };
+        }
+        default:
+          return { op: (op as BulkWriteOperation).op, success: false, error: 'Unknown operation' };
+      }
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Unknown error';
+      return { op: op.op, success: false, error: message };
+    }
+  }
+
+  // ==========================================================================
   // Protected Helpers
   // ==========================================================================
 
@@ -289,21 +609,43 @@ export class Model implements IModel {
     }
   }
 
+  /**
+   * Normalize ListArgs: convert simplified filter/sortBy to filterArr/sortArr
+   */
+  protected normalizeArgs(args: ListArgs): ListArgs {
+    const normalized = { ...args };
+    
+    // Convert simplified filter to filterArr
+    if (args.filter && !args.filterArr?.length) {
+      normalized.filterArr = parseSimpleFilter(args.filter, this.context.table);
+    }
+    
+    // Convert simplified sortBy to sortArr
+    if (args.sortBy && !args.sortArr?.length) {
+      normalized.sortArr = parseSimpleSort(args.sortBy, this.context.table);
+    }
+    
+    return normalized;
+  }
+
   protected async applyFiltersAndSorts(
     qb: Knex.QueryBuilder,
     args: ListArgs
   ): Promise<void> {
-    if (args.filterArr?.length) {
+    // Normalize args first (convert simplified syntax)
+    const normalizedArgs = this.normalizeArgs(args);
+    
+    if (normalizedArgs.filterArr?.length) {
       await applyConditions(
-        args.filterArr,
+        normalizedArgs.filterArr,
         qb,
         this.context.table,
         this.context.tables,
         this.context.db
       );
     }
-    if (args.where) {
-      const filters = parseWhereString(args.where, this.context.table);
+    if (normalizedArgs.where) {
+      const filters = parseWhereString(normalizedArgs.where, this.context.table);
       if (filters.length) {
         await applyConditions(
           filters,
@@ -315,9 +657,9 @@ export class Model implements IModel {
       }
     }
 
-    if (args.sortArr?.length) {
+    if (normalizedArgs.sortArr?.length) {
       await applySorts(
-        args.sortArr,
+        normalizedArgs.sortArr,
         qb,
         this.context.table,
         this.context.tables,
@@ -325,8 +667,8 @@ export class Model implements IModel {
         this.context.alias
       );
     }
-    if (args.sort) {
-      const sorts = parseSortString(args.sort, this.context.table);
+    if (normalizedArgs.sort) {
+      const sorts = parseSortString(normalizedArgs.sort, this.context.table);
       if (sorts.length) {
         await applySorts(
           sorts,

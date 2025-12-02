@@ -17,6 +17,7 @@ export {
 export type {
   Column,
   ColumnOption,
+  ColumnConstraints,
   BaseColumnOption,
   LinkColumnOption,
   FormulaColumnOption,
@@ -37,6 +38,10 @@ export type {
   FilterOperator,
   LogicalOperator,
   SortDirection,
+  // Simplified (AI-friendly)
+  SimpleFilter,
+  SimpleFilterCondition,
+  SimpleSort,
 } from './filter';
 
 // Query types
@@ -48,7 +53,24 @@ export type {
   RequestContext,
   RequestUser,
   DataRecord,
+  // Bulk write types (AI-friendly)
+  BulkWriteOperation,
+  BulkInsertOp,
+  BulkUpdateOp,
+  BulkDeleteOp,
+  BulkLinkOp,
+  BulkUnlinkOp,
+  BulkWriteOperationResult,
+  BulkWriteResult,
 } from './query';
 
 // Re-export DataRecord as Record for convenience
 export type { DataRecord as Record } from './query';
+
+// Schema description types (AI-friendly)
+export type {
+  RelationType,
+  RelationshipInfo,
+  SchemaDescription,
+  TableOverview,
+} from './schema';

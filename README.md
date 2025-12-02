@@ -1,27 +1,27 @@
-# JSONB Model
+# AgentDB
 
-A flexible, extensible database abstraction layer for PostgreSQL with JSONB storage using **composition pattern**.
+AI Agent-friendly PostgreSQL database layer with JSONB storage.
 
 ## Features
 
+- 🤖 **AI-Friendly**: Schema descriptions, semantic metadata, and simplified query syntax
 - 🚀 **High Performance**: Optimized for PostgreSQL with JSONB storage and GIN indexes
 - 📦 **Composition Pattern**: Modular operations that can be combined flexibly
 - 🔗 **Relationship Support**: Full many-to-many relationship operations
 - 🧮 **Virtual Columns**: Support for Formula, Rollup, Lookup, and Links columns
 - 📋 **Bulk Operations**: Efficient batch insert, update, and delete
-- 🔄 **Lazy Loading**: Optional lazy loading for related records
-- 📝 **Copy Operations**: Deep copy records with relationships
+- 🔄 **Atomic Transactions**: Simple `atomic()` wrapper for complex operations
 
 ## Installation
 
 ```bash
-npm install jsonb-model
+npm install agentdb
 ```
 
 ## Quick Start
 
 ```typescript
-import { createModel, initDatabase } from 'jsonb-model';
+import { createModel, initDatabase } from 'agentdb';
 import knex from 'knex';
 
 // Setup database connection
@@ -33,332 +33,314 @@ const db = knex({
 // Initialize database schema
 await initDatabase(db);
 
-// Define your table schema
+// Define your table schema with AI-friendly metadata
 const tables = [
   {
     id: 'users',
     title: 'Users',
+    description: 'User accounts for the application',
+    hints: ['Email must be unique', 'Name is required'],
     columns: [
-      { id: 'name', title: 'Name', uidt: 'SingleLineText' },
-      { id: 'email', title: 'Email', uidt: 'Email' },
+      { 
+        id: 'name', 
+        title: 'Name', 
+        uidt: 'SingleLineText',
+        description: 'User display name',
+        examples: ['John Doe', 'Jane Smith'],
+        constraints: { required: true, maxLength: 100 }
+      },
+      { 
+        id: 'email', 
+        title: 'Email', 
+        uidt: 'Email',
+        description: 'User email address for login',
+        examples: ['john@example.com'],
+        constraints: { required: true, unique: true }
+      },
+      {
+        id: 'age',
+        title: 'Age',
+        uidt: 'Number',
+        description: 'User age in years',
+        constraints: { min: 0, max: 150 }
+      },
     ],
   },
 ];
 
 // Create a model instance
-const model = createModel({
-  db,
-  tableId: 'users',
-  tables,
+const model = createModel({ db, tableId: 'users', tables });
+
+// AI can understand the schema
+const schema = model.describeSchema();
+console.log(schema);
+// {
+//   table: { id: 'users', title: 'Users', description: '...' },
+//   columns: [{ id: 'name', type: 'SingleLineText', required: true, ... }],
+//   relationships: []
+// }
+
+// CRUD operations with simplified syntax
+const user = await model.insert({ name: 'John', email: 'john@example.com' });
+
+// Simplified filter syntax
+const users = await model.list({
+  filter: { 
+    age: { gte: 18, lt: 65 },
+    email: { like: '%@company.com' }
+  },
+  sortBy: { created_at: 'desc' },
+  limit: 10
 });
 
-// CRUD operations
-const user = await model.insert({ name: 'John', email: 'john@example.com' });
-const users = await model.list({ limit: 10 });
 await model.updateByPk(user.id, { name: 'Jane' });
 await model.deleteByPk(user.id);
 ```
 
-## Architecture: Composition Pattern
+## AI-Friendly Schema
 
-The model uses composition instead of inheritance. Each capability is a separate operation module that can be enabled or disabled:
+### Column Metadata
 
 ```typescript
-// Model with all features
-const fullModel = createFullModel({ db, tableId, tables });
+interface Column {
+  id: string;
+  title: string;
+  uidt: UITypes;
+  
+  // AI-friendly fields
+  description?: string;           // Human-readable description
+  examples?: unknown[];           // Example values
+  constraints?: {
+    required?: boolean;
+    unique?: boolean;
+    min?: number;
+    max?: number;
+    minLength?: number;
+    maxLength?: number;
+    pattern?: string;             // Regex pattern
+    enumValues?: string[];        // Valid values for select types
+  };
+}
+```
 
-// Minimal model (only CRUD)
-const minimalModel = createMinimalModel({ db, tableId, tables });
+### Table Metadata
 
-// Custom composition
-const customModel = new Model({
-  db, tableId, tables
-}, {
-  virtualColumns: true,
-  linkOperations: true,
-  lazyLoading: false,
-  copyOperations: true,
+```typescript
+interface Table {
+  id: string;
+  title: string;
+  columns?: Column[];
+  
+  // AI-friendly fields
+  description?: string;           // What this table stores
+  hints?: string[];               // Business rules for AI to follow
+}
+```
+
+### Schema Discovery
+
+```typescript
+// Get current table schema
+const schema = model.describeSchema();
+
+// Get overview of all tables
+const tables = model.describeAllTables();
+// [
+//   { id: 'users', title: 'Users', description: '...', columnCount: 5, relationCount: 2 },
+//   { id: 'orders', title: 'Orders', description: '...', columnCount: 8, relationCount: 3 }
+// ]
+```
+
+## Simplified Query Syntax
+
+### Filter
+
+```typescript
+// Simplified (AI-friendly)
+await model.list({
+  filter: {
+    status: 'active',                    // equals
+    age: { gte: 18, lt: 65 },            // range
+    name: { like: '%john%' },            // contains
+    tags: { contains: 'vip' },           // array contains
+    email: { notnull: true }             // not null
+  }
+});
+
+// Original (still supported)
+await model.list({
+  filterArr: [
+    { fk_column_id: 'status', comparison_op: 'eq', value: 'active' }
+  ]
 });
 ```
 
-### Operation Modules
-
-| Module | Description | Access |
-|--------|-------------|--------|
-| `CrudOperations` | Basic CRUD operations | Always included |
-| `LinkOperations` | Many-to-many relationships | `model.links` |
-| `VirtualColumnOperations` | Formula, Rollup, Lookup | `model.virtual` |
-| `LazyOperations` | Lazy loading | `model.lazy` |
-| `CopyOperations` | Record duplication | `model.copy` |
-
-## Project Structure
-
-```
-src/
-├── config/          # Configuration and constants
-│   └── index.ts     # TABLE_DATA, TABLE_RELATIONS, pagination defaults
-├── types/           # Type definitions
-│   ├── column.ts    # Column, UITypes, relation types
-│   ├── table.ts     # Table, View definitions
-│   ├── filter.ts    # Filter, Sort types
-│   ├── query.ts     # ListArgs, BulkOptions, Record
-│   └── index.ts     # Barrel export
-├── core/            # Core abstractions
-│   ├── ModelContext.ts   # Shared state for operations
-│   ├── NcError.ts        # Error handling
-│   ├── operations/       # Operation modules
-│   │   ├── CrudOperations.ts       # CRUD
-│   │   ├── LinkOperations.ts       # Many-to-many
-│   │   ├── VirtualColumnOperations.ts  # Virtual columns
-│   │   ├── LazyOperations.ts       # Lazy loading
-│   │   ├── CopyOperations.ts       # Deep copy
-│   │   └── index.ts
-│   └── index.ts
-├── models/          # Model composition
-│   ├── Model.ts     # Main model composing operations
-│   └── index.ts
-├── query/           # Query building
-│   ├── sqlBuilder.ts      # SQL expression helpers
-│   ├── conditionBuilder.ts  # Filter conditions
-│   ├── sortBuilder.ts      # Sort handling
-│   ├── formulaBuilder.ts   # Formula evaluation
-│   ├── rollupBuilder.ts    # Rollup aggregations
-│   ├── linkBuilder.ts      # Link count queries
-│   └── index.ts
-├── functions/       # SQL function mappings
-│   ├── common.ts    # Common functions (IF, AND, OR, etc.)
-│   ├── postgres.ts  # PostgreSQL-specific functions
-│   └── index.ts
-├── utils/           # Utilities
-│   ├── sanitize.ts    # Input sanitization (XSS prevention)
-│   ├── columnUtils.ts # Column helpers
-│   └── index.ts
-└── index.ts         # Main entry point
-```
-
-## API Reference
-
-### Factory Functions
-
-#### `createModel(params)`
-
-Create a model with default options (virtual columns + links).
+### Sort
 
 ```typescript
-const model = createModel({
-  db: knex,
-  tableId: 'users',
-  tables: allTables,
+// Simplified (AI-friendly)
+await model.list({
+  sortBy: { created_at: 'desc', name: 'asc' }
+});
+
+// Original (still supported)
+await model.list({
+  sort: '-created_at,name'
 });
 ```
 
-#### `createLazyModel(params)`
-
-Create a model with lazy loading enabled.
+## Atomic Transactions
 
 ```typescript
-const model = createLazyModel({ db, tableId, tables });
-
-// Load with relations
-const records = await model.lazy?.listWithRelations({ limit: 10 });
-```
-
-#### `createCopyModel(params)`
-
-Create a model with copy operations enabled.
-
-```typescript
-const model = createCopyModel({ db, tableId, tables });
-
-// Deep copy a record
-const copy = await model.copy?.copyRecordDeep('record_id', { deepCopy: true });
-```
-
-#### `createFullModel(params)`
-
-Create a model with all features enabled.
-
-#### `createMinimalModel(params)`
-
-Create a minimal model with only CRUD operations.
-
-### CRUD Operations
-
-```typescript
-// Read
-const record = await model.readByPk('record_id');
-const exists = await model.exists('record_id');
-const found = await model.findOne({ where: 'name,eq,John' });
-
-// List
-const records = await model.list({
-  fields: ['name', 'email'],
-  filterArr: [{ fk_column_id: 'name', comparison_op: 'like', value: 'John' }],
-  sortArr: [{ fk_column_id: 'name', direction: 'asc' }],
-  limit: 10,
-  offset: 0,
+// Execute multiple operations atomically
+const result = await model.atomic(async (m) => {
+  const user = await m.insert({ name: 'John', email: 'john@example.com' });
+  const order = await orderModel.insert({ userId: user.id, total: 100 });
+  await m.links?.mmLink(orderColumn, [order.id], user.id);
+  return { user, order };
 });
-
-// Count
-const total = await model.count({ filterArr: [...] });
-
-// Insert
-const newRecord = await model.insert({ name: 'John', email: 'john@example.com' });
-
-// Update
-const updated = await model.updateByPk('record_id', { name: 'Jane' });
-
-// Delete
-await model.deleteByPk('record_id');
+// Automatically commits on success, rolls back on failure
 ```
 
-### Bulk Operations
+## Mixed Bulk Operations
 
 ```typescript
-// Bulk insert
-const records = await model.bulkInsert([
-  { name: 'User 1' },
-  { name: 'User 2' },
-], { chunkSize: 100 });
-
-// Bulk update
-await model.bulkUpdate([
-  { id: 'id1', name: 'Updated 1' },
-  { id: 'id2', name: 'Updated 2' },
+// Execute multiple different operations in one transaction
+const result = await model.bulkWrite([
+  { op: 'insert', data: { name: 'User A' } },
+  { op: 'insert', data: { name: 'User B' } },
+  { op: 'update', id: 'existing_id', data: { status: 'active' } },
+  { op: 'delete', id: 'old_id' },
+  { op: 'link', columnId: 'orders', parentId: 'user_id', childIds: ['order1', 'order2'] }
 ]);
 
-// Bulk delete
-await model.bulkDelete(['id1', 'id2', 'id3']);
+console.log(result);
+// {
+//   success: true,
+//   insertedIds: ['id1', 'id2'],
+//   updatedCount: 1,
+//   deletedCount: 1,
+//   linkedCount: 2,
+//   unlinkedCount: 0
+// }
 ```
 
-### Link Operations (Many-to-Many)
+## Schema Management API
+
+Besides directly defining `tables` array, you can use `SchemaManager` for programmatic schema management:
 
 ```typescript
-// Access link operations via model.links
-const linkOps = model.links;
+import { createSchemaManager, createModel } from 'agentdb';
 
-// List linked records
-const linked = await linkOps.mmList(column, { parentId: 'parent_id' });
+const schema = createSchemaManager();
 
-// Count linked records
-const count = await linkOps.mmListCount(column, { parentId: 'parent_id' });
-
-// Link records
-await linkOps.mmLink(column, ['child_id_1', 'child_id_2'], 'parent_id');
-
-// Unlink records
-await linkOps.mmUnlink(column, ['child_id_1'], 'parent_id');
-
-// List excluded (unlinked) records
-const excluded = await linkOps.mmExcludedList(column, { parentId: 'parent_id' });
-```
-
-### Lazy Loading
-
-```typescript
-const model = createLazyModel({ db, tableId, tables });
-
-// List with pre-loaded relations
-const records = await model.lazy?.listWithRelations({ limit: 10 });
-
-// Read single record with relations
-const record = await model.lazy?.readByPkWithRelations('record_id');
-
-// Manually load relations for existing records
-const withRelations = await model.lazy?.loadRelations(records);
-```
-
-### Copy Operations
-
-```typescript
-const model = createCopyModel({ db, tableId, tables });
-
-// Deep copy a single record
-const copy = await model.copy?.copyRecordDeep('record_id', {
-  copyRelations: true,
-  deepCopy: true,
-  maxDepth: 3,
-  excludeColumns: ['sensitive_field'],
+// Create tables
+const usersTable = schema.createTable({
+  title: 'Users',
+  description: 'User accounts',
+  hints: ['Email must be unique'],
+  columns: [
+    { 
+      title: 'Name', 
+      uidt: 'SingleLineText', 
+      description: 'User display name',
+      constraints: { required: true } 
+    },
+    { 
+      title: 'Email', 
+      uidt: 'Email', 
+      constraints: { required: true, unique: true } 
+    }
+  ]
 });
 
-// Copy multiple records
-const copies = await model.copy?.copyRecordsDeep(['id1', 'id2'], {
-  copyRelations: true,
+const ordersTable = schema.createTable({
+  title: 'Orders',
+  description: 'Customer orders',
+  columns: [
+    { title: 'Total', uidt: 'Currency' },
+    { title: 'Status', uidt: 'SingleSelect', constraints: { enumValues: ['pending', 'paid', 'shipped'] } }
+  ]
 });
 
-// Copy relations between records
-await model.copy?.copyRelations('source_id', 'target_id', {
-  deepCopy: false,  // Just link, don't duplicate
+// Add column to existing table
+schema.addColumn(usersTable.id, {
+  title: 'Age',
+  uidt: 'Number',
+  constraints: { min: 0, max: 150 }
 });
-```
 
-### Virtual Column Operations
-
-```typescript
-// Virtual columns are automatically included in queries when enabled
-const model = createModel({ db, tableId, tables });
-
-// Formula, Rollup, Lookup, and Link count columns
-// are computed automatically in list/read operations
-const records = await model.list();
-
-// Access virtual column operations directly
-const virtualOps = model.virtual;
-const virtualColumns = virtualOps?.getVirtualColumns();
-```
-
-## Model Options
-
-```typescript
-interface ModelOptions {
-  virtualColumns?: boolean;   // Formula, Rollup, Lookup support
-  linkOperations?: boolean;   // Many-to-many operations
-  lazyLoading?: boolean;      // Lazy loading for relations
-  copyOperations?: boolean;   // Deep copy functionality
-}
-
-// Custom model configuration
-import { silentLogger, consoleLogger } from 'jsonb-model';
-
-const model = new Model({
-  db,
-  tableId: 'users',
-  tables,
-  config: {
-    limitDefault: 25,
-    limitMin: 1,
-    limitMax: 1000,
-    logger: consoleLogger,    // or silentLogger, or custom logger
-    queryTimeout: 30000,      // 30 seconds timeout
-  },
-}, {
-  virtualColumns: true,
-  linkOperations: true,
-  lazyLoading: true,
-  copyOperations: true,
+// Create relationship
+schema.createLink({
+  sourceTableId: usersTable.id,
+  targetTableId: ordersTable.id,
+  linkColumnTitle: 'Orders',
+  type: 'mm',
+  bidirectional: true,
+  inverseLinkColumnTitle: 'Customer'
 });
-```
 
-## Custom Logger
+// Update table/column
+schema.updateTable(usersTable.id, { description: 'Updated description' });
+schema.updateColumn(usersTable.id, 'name', { constraints: { maxLength: 100 } });
 
-You can provide a custom logger implementing the `Logger` interface:
-
-```typescript
-import { Logger } from 'jsonb-model';
-
-const customLogger: Logger = {
-  debug: (msg, ...args) => myLogger.debug(msg, ...args),
-  info: (msg, ...args) => myLogger.info(msg, ...args),
-  warn: (msg, ...args) => myLogger.warn(msg, ...args),
-  error: (msg, ...args) => myLogger.error(msg, ...args),
-};
-
+// Get tables for model
 const model = createModel({
   db,
-  tableId: 'users',
-  tables,
-  config: { logger: customLogger },
+  tableId: usersTable.id,
+  tables: schema.getTables()
 });
+```
+
+### Schema Manager Methods
+
+| Method | Description |
+|--------|-------------|
+| `createTable(def)` | Create a new table |
+| `getTable(id)` | Get table by ID |
+| `updateTable(id, updates)` | Update table properties |
+| `dropTable(id)` | Remove a table |
+| `addColumn(tableId, col)` | Add column to table |
+| `getColumn(tableId, colId)` | Get column by ID |
+| `updateColumn(tableId, colId, updates)` | Update column |
+| `dropColumn(tableId, colId)` | Remove column |
+| `createLink(def)` | Create relationship between tables |
+| `removeLink(tableId, colId)` | Remove relationship |
+| `exportSchema()` | Export schema to JSON |
+| `importSchema(json, opts)` | Import schema from JSON |
+| `getTables()` | Get all table definitions |
+
+### Schema Import/Export
+
+```typescript
+// Export
+const exported = schema.exportSchema();
+// { version: '1.0', exportedAt: '...', tables: [...] }
+
+// Import (replace all)
+schema.importSchema(exported);
+
+// Import (merge with existing)
+schema.importSchema(exported, { merge: true });
+```
+
+## Model Factory Functions
+
+```typescript
+// Default model (virtual columns + links)
+const model = createModel({ db, tableId, tables });
+
+// With lazy loading
+const lazyModel = createLazyModel({ db, tableId, tables });
+
+// With copy operations
+const copyModel = createCopyModel({ db, tableId, tables });
+
+// All features enabled
+const fullModel = createFullModel({ db, tableId, tables });
+
+// Minimal (CRUD only, best performance)
+const minimalModel = createMinimalModel({ db, tableId, tables });
 ```
 
 ## Database Schema
@@ -409,7 +391,7 @@ The library uses two tables:
 ## Error Handling
 
 ```typescript
-import { ModelError, ErrorCode } from 'jsonb-model';
+import { ModelError, ErrorCode } from 'agentdb';
 
 try {
   await model.readByPk('nonexistent');
@@ -420,11 +402,6 @@ try {
     console.log(error.details);     // { id: 'nonexistent' }
   }
 }
-
-// Use static factory methods
-ModelError.notFound('Record not found');
-ModelError.badRequest('Invalid input');
-ModelError.validationError('Field required', { field: 'name' });
 ```
 
 ## License

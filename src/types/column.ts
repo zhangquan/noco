@@ -149,6 +149,32 @@ export type ColumnOption =
   | SelectOption[];
 
 // ============================================================================
+// Column Constraints (AI-friendly)
+// ============================================================================
+
+/**
+ * Column constraints for validation and AI understanding
+ */
+export interface ColumnConstraints {
+  /** Field is required */
+  required?: boolean;
+  /** Value must be unique across all records */
+  unique?: boolean;
+  /** Minimum value (for numbers) */
+  min?: number;
+  /** Maximum value (for numbers) */
+  max?: number;
+  /** Minimum string length */
+  minLength?: number;
+  /** Maximum string length */
+  maxLength?: number;
+  /** Regex pattern for validation */
+  pattern?: string;
+  /** Valid enum values (for SingleSelect/MultiSelect) */
+  enumValues?: string[];
+}
+
+// ============================================================================
 // Column Definition
 // ============================================================================
 
@@ -182,6 +208,14 @@ export interface Column {
   order?: number;
   /** Column-specific options */
   options?: ColumnOption;
+  
+  // === AI-friendly fields ===
+  /** Human-readable description of this column's purpose */
+  description?: string;
+  /** Example values to help AI understand the expected format */
+  examples?: unknown[];
+  /** Validation constraints */
+  constraints?: ColumnConstraints;
   
   // Legacy field names (deprecated)
   /** @deprecated Use name instead */
