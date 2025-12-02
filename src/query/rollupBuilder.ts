@@ -74,7 +74,7 @@ export async function buildRollupSubquery(
 
   switch (relationOptions.type) {
     case RelationTypes.MANY_TO_MANY:
-      return buildMmRollup(table, relatedTable, relationOptions, rollupSqlCol, rollup_function, tables, db, alias);
+      return buildMmRollup(table, relatedTable, relationOptions, rollupSqlCol, rollup_function, tables, db, alias, relationColumn.id);
 
     case RelationTypes.HAS_MANY:
       return buildHmRollup(table, relatedTable, relationColumn, rollupSqlCol, rollup_function, db, alias);
@@ -99,19 +99,20 @@ function buildMmRollup(
   rollupFunction: RollupFunction,
   tables: Table[],
   db: Knex,
-  alias?: string
+  alias?: string,
+  relationColumnId?: string
 ): Knex.QueryBuilder | Knex.Raw {
-  const mmTableId = relationOptions.fk_mm_model_id || relationOptions.mm_model_id;
-  if (!mmTableId) {
+  const parentAlias = alias || 'nc_bigtable';
+
+  // Use the relation column ID to find linked children
+  const columnId = relationColumnId || relationOptions.fk_mm_parent_column_id;
+  if (!columnId) {
     return db.raw('NULL');
   }
 
-  const mmTable = getTableByIdOrThrow(tables, mmTableId);
-  const parentAlias = alias || 'nc_bigtable';
-
   const childIdsSubquery = db(`${TABLE_RELATIONS} AS mm`)
     .select('mm.fk_child_id')
-    .where('mm.fk_table_id', mmTable.id)
+    .where('mm.fk_mm_parent_column_id', columnId)
     .whereRaw(`mm.fk_parent_id = ${parentAlias}.id`);
 
   return db(`${TABLE_DATA} AS rollup_child`)

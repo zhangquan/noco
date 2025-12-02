@@ -118,9 +118,14 @@ export function createMinimalModel(params: ModelContextParams): Model {
 // ============================================================================
 
 /**
- * Create database tables for data storage
+ * Initialize database schema - creates required tables for data storage
+ * @param db - Knex database instance
+ * @example
+ * ```typescript
+ * await initDatabase(db);
+ * ```
  */
-export async function createTables(db: Knex): Promise<void> {
+export async function initDatabase(db: Knex): Promise<void> {
   // Main data table
   const hasDataTable = await db.schema.hasTable(TABLE_DATA);
   if (!hasDataTable) {
@@ -151,12 +156,23 @@ export async function createTables(db: Knex): Promise<void> {
 }
 
 /**
- * Drop database tables
+ * Drop database tables - use with caution, this will delete all data
+ * @param db - Knex database instance
  */
-export async function dropTables(db: Knex): Promise<void> {
+export async function dropDatabase(db: Knex): Promise<void> {
   await db.schema.dropTableIfExists(TABLE_RELATIONS);
   await db.schema.dropTableIfExists(TABLE_DATA);
 }
+
+/**
+ * @deprecated Use initDatabase instead
+ */
+export const createTables = initDatabase;
+
+/**
+ * @deprecated Use dropDatabase instead
+ */
+export const dropTables = dropDatabase;
 
 // ============================================================================
 // Re-exports

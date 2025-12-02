@@ -18,12 +18,12 @@ CREATE TABLE IF NOT EXISTS nc_bigtable (
 -- Relations table (Many-to-Many junction table)
 -- Stores MM relationships between records
 CREATE TABLE IF NOT EXISTS nc_bigtable_relations (
-    id VARCHAR(26) PRIMARY KEY,              -- ULID primary key
-    fk_table_id VARCHAR(26) NOT NULL,        -- MM table identifier
-    fk_parent_id VARCHAR(26),                -- Parent record ID
-    fk_child_id VARCHAR(26),                 -- Child record ID
-    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
-    updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+    id VARCHAR(26) PRIMARY KEY,                    -- ULID primary key
+    fk_parent_id VARCHAR(26) NOT NULL,             -- Parent record ID
+    fk_child_id VARCHAR(26) NOT NULL,              -- Child record ID
+    fk_mm_parent_column_id VARCHAR(36) NOT NULL,   -- Parent link column ID
+    fk_mm_child_column_id VARCHAR(36),             -- Child link column ID (symmetric)
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
 
 -- =============================================
@@ -54,21 +54,21 @@ ON nc_bigtable USING GIN(data jsonb_path_ops);
 -- Indexes for nc_bigtable_relations
 -- =============================================
 
--- Parent lookup index
+-- Parent lookup index (by column and parent)
 CREATE INDEX IF NOT EXISTS idx_nc_relations_parent 
-ON nc_bigtable_relations(fk_table_id, fk_parent_id);
+ON nc_bigtable_relations(fk_mm_parent_column_id, fk_parent_id);
 
 -- Child lookup index
 CREATE INDEX IF NOT EXISTS idx_nc_relations_child 
-ON nc_bigtable_relations(fk_table_id, fk_child_id);
+ON nc_bigtable_relations(fk_child_id);
 
--- Composite index for relationship queries
-CREATE INDEX IF NOT EXISTS idx_nc_relations_both 
-ON nc_bigtable_relations(fk_table_id, fk_parent_id, fk_child_id);
+-- Parent ID index
+CREATE INDEX IF NOT EXISTS idx_nc_relations_parent_id 
+ON nc_bigtable_relations(fk_parent_id);
 
 -- Unique constraint to prevent duplicate relationships
 CREATE UNIQUE INDEX IF NOT EXISTS idx_nc_relations_unique 
-ON nc_bigtable_relations(fk_table_id, fk_parent_id, fk_child_id);
+ON nc_bigtable_relations(fk_parent_id, fk_child_id, fk_mm_parent_column_id);
 
 -- =============================================
 -- Trigger for auto-updating updated_at
@@ -90,13 +90,6 @@ CREATE TRIGGER trigger_nc_bigtable_updated_at
     FOR EACH ROW
     EXECUTE FUNCTION update_updated_at_column();
 
--- Apply trigger to nc_bigtable_relations
-DROP TRIGGER IF EXISTS trigger_nc_relations_updated_at ON nc_bigtable_relations;
-CREATE TRIGGER trigger_nc_relations_updated_at
-    BEFORE UPDATE ON nc_bigtable_relations
-    FOR EACH ROW
-    EXECUTE FUNCTION update_updated_at_column();
-
 -- =============================================
 -- Comments
 -- =============================================
@@ -108,6 +101,7 @@ COMMENT ON COLUMN nc_bigtable.id IS 'ULID primary key - globally unique, time-so
 COMMENT ON COLUMN nc_bigtable.fk_table_id IS 'Table identifier - used for data isolation in single-table design';
 COMMENT ON COLUMN nc_bigtable.data IS 'JSONB column containing all user-defined fields';
 
-COMMENT ON COLUMN nc_bigtable_relations.fk_table_id IS 'MM junction table identifier';
 COMMENT ON COLUMN nc_bigtable_relations.fk_parent_id IS 'Parent record ID in the MM relationship';
 COMMENT ON COLUMN nc_bigtable_relations.fk_child_id IS 'Child record ID in the MM relationship';
+COMMENT ON COLUMN nc_bigtable_relations.fk_mm_parent_column_id IS 'Parent link column ID - identifies which link column created this relation';
+COMMENT ON COLUMN nc_bigtable_relations.fk_mm_child_column_id IS 'Child link column ID - symmetric column on the child table';

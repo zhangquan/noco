@@ -21,7 +21,7 @@ npm install nocodb-db-layer
 ## Quick Start
 
 ```typescript
-import { createModel, createTables } from 'nocodb-db-layer';
+import { createModel, initDatabase } from 'nocodb-db-layer';
 import knex from 'knex';
 
 // Setup database connection
@@ -30,8 +30,8 @@ const db = knex({
   connection: 'postgresql://localhost/mydb',
 });
 
-// Create required tables
-await createTables(db);
+// Initialize database schema
+await initDatabase(db);
 
 // Define your table schema
 const tables = [

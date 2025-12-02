@@ -61,20 +61,14 @@ export function buildLinkCountSubquery(
 
 function buildMmLinkCount(
   options: LinkColumnOption,
-  tables: Table[],
+  columnId: string,
   db: Knex,
   parentAlias: string
 ): Knex.QueryBuilder | Knex.Raw {
-  const mmTableId = options.fk_mm_model_id || options.mm_model_id;
-  if (!mmTableId) {
-    return db.raw('0');
-  }
-
-  const mmTable = getTableByIdOrThrow(tables, mmTableId);
-
+  // Use the column ID to count links for this specific relation
   return db(`${TABLE_RELATIONS} AS link_count`)
     .count('*')
-    .where('link_count.fk_table_id', mmTable.id)
+    .where('link_count.fk_mm_parent_column_id', columnId)
     .whereRaw(`link_count.fk_parent_id = ${parentAlias}.id`);
 }
 
