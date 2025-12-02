@@ -1,8 +1,8 @@
 /**
- * JSONB Model
- * A flexible database abstraction layer for PostgreSQL with JSONB storage
+ * AgentDB
+ * AI Agent-friendly PostgreSQL database layer with JSONB storage
  *
- * @module jsonb-model
+ * @module agentdb
  */
 
 import type { Knex } from 'knex';
@@ -197,6 +197,7 @@ export const dropTables = dropDatabase;
 export type {
   Column,
   ColumnOption,
+  ColumnConstraints,
   Table,
   Filter,
   FilterOperator,
@@ -208,8 +209,29 @@ export type {
   RequestContext,
   DataRecord,
   Record,
+  // Schema description types (AI-friendly)
+  RelationType,
+  RelationshipInfo,
+  SchemaDescription,
+  TableOverview,
+  // Simplified filter/sort (AI-friendly)
+  SimpleFilter,
+  SimpleFilterCondition,
+  SimpleSort,
+  // Bulk write types (AI-friendly)
+  BulkWriteOperation,
+  BulkInsertOp,
+  BulkUpdateOp,
+  BulkDeleteOp,
+  BulkLinkOp,
+  BulkUnlinkOp,
+  BulkWriteOperationResult,
+  BulkWriteResult,
 } from './types';
 export { UITypes } from './types';
+
+// Filter/Sort parser utilities
+export { parseSimpleFilter, parseSimpleSort } from './utils/filterParser';
 
 // Config
 export {

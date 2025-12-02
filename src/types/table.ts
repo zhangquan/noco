@@ -32,6 +32,12 @@ export interface Table {
   /** Timestamps */
   createdAt?: string;
   updatedAt?: string;
+  
+  // === AI-friendly fields ===
+  /** Human-readable description of this table's purpose */
+  description?: string;
+  /** Business rules or hints for AI to follow when operating on this table */
+  hints?: string[];
 }
 
 /**

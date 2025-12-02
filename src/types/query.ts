@@ -4,7 +4,7 @@
  */
 
 import type { Knex } from 'knex';
-import type { Filter, Sort } from './filter';
+import type { Filter, Sort, SimpleFilter, SimpleSort } from './filter';
 
 // ============================================================================
 // Query Arguments
@@ -34,6 +34,20 @@ export interface ListArgs {
   condition?: Record<string, unknown>;
   /** Parent ID for relation queries */
   parentId?: string;
+  
+  // === Simplified syntax (AI-friendly) ===
+  
+  /**
+   * Simplified filter object
+   * @example { status: 'active', age: { gte: 18 } }
+   */
+  filter?: SimpleFilter;
+  
+  /**
+   * Simplified sort object
+   * @example { created_at: 'desc', name: 'asc' }
+   */
+  sortBy?: SimpleSort;
 }
 
 /**
@@ -116,3 +130,85 @@ export type DataRecord = {
   updated_by?: string | null;
   [key: string]: unknown;
 };
+
+// ============================================================================
+// Bulk Write Types (AI-friendly)
+// ============================================================================
+
+/**
+ * Insert operation for bulkWrite
+ */
+export interface BulkInsertOp {
+  op: 'insert';
+  data: DataRecord;
+}
+
+/**
+ * Update operation for bulkWrite
+ */
+export interface BulkUpdateOp {
+  op: 'update';
+  id: string;
+  data: DataRecord;
+}
+
+/**
+ * Delete operation for bulkWrite
+ */
+export interface BulkDeleteOp {
+  op: 'delete';
+  id: string;
+}
+
+/**
+ * Link operation for bulkWrite
+ */
+export interface BulkLinkOp {
+  op: 'link';
+  columnId: string;
+  parentId: string;
+  childIds: string[];
+}
+
+/**
+ * Unlink operation for bulkWrite
+ */
+export interface BulkUnlinkOp {
+  op: 'unlink';
+  columnId: string;
+  parentId: string;
+  childIds: string[];
+}
+
+/**
+ * All possible bulk write operations
+ */
+export type BulkWriteOperation =
+  | BulkInsertOp
+  | BulkUpdateOp
+  | BulkDeleteOp
+  | BulkLinkOp
+  | BulkUnlinkOp;
+
+/**
+ * Result of a single bulk write operation
+ */
+export interface BulkWriteOperationResult {
+  op: BulkWriteOperation['op'];
+  success: boolean;
+  id?: string;
+  error?: string;
+}
+
+/**
+ * Result of bulkWrite()
+ */
+export interface BulkWriteResult {
+  success: boolean;
+  results: BulkWriteOperationResult[];
+  insertedIds: string[];
+  updatedCount: number;
+  deletedCount: number;
+  linkedCount: number;
+  unlinkedCount: number;
+}
