@@ -225,6 +225,105 @@ console.log(result);
 // }
 ```
 
+## Schema Management API
+
+Besides directly defining `tables` array, you can use `SchemaManager` for programmatic schema management:
+
+```typescript
+import { createSchemaManager, createModel } from 'agentdb';
+
+const schema = createSchemaManager();
+
+// Create tables
+const usersTable = schema.createTable({
+  title: 'Users',
+  description: 'User accounts',
+  hints: ['Email must be unique'],
+  columns: [
+    { 
+      title: 'Name', 
+      uidt: 'SingleLineText', 
+      description: 'User display name',
+      constraints: { required: true } 
+    },
+    { 
+      title: 'Email', 
+      uidt: 'Email', 
+      constraints: { required: true, unique: true } 
+    }
+  ]
+});
+
+const ordersTable = schema.createTable({
+  title: 'Orders',
+  description: 'Customer orders',
+  columns: [
+    { title: 'Total', uidt: 'Currency' },
+    { title: 'Status', uidt: 'SingleSelect', constraints: { enumValues: ['pending', 'paid', 'shipped'] } }
+  ]
+});
+
+// Add column to existing table
+schema.addColumn(usersTable.id, {
+  title: 'Age',
+  uidt: 'Number',
+  constraints: { min: 0, max: 150 }
+});
+
+// Create relationship
+schema.createLink({
+  sourceTableId: usersTable.id,
+  targetTableId: ordersTable.id,
+  linkColumnTitle: 'Orders',
+  type: 'mm',
+  bidirectional: true,
+  inverseLinkColumnTitle: 'Customer'
+});
+
+// Update table/column
+schema.updateTable(usersTable.id, { description: 'Updated description' });
+schema.updateColumn(usersTable.id, 'name', { constraints: { maxLength: 100 } });
+
+// Get tables for model
+const model = createModel({
+  db,
+  tableId: usersTable.id,
+  tables: schema.getTables()
+});
+```
+
+### Schema Manager Methods
+
+| Method | Description |
+|--------|-------------|
+| `createTable(def)` | Create a new table |
+| `getTable(id)` | Get table by ID |
+| `updateTable(id, updates)` | Update table properties |
+| `dropTable(id)` | Remove a table |
+| `addColumn(tableId, col)` | Add column to table |
+| `getColumn(tableId, colId)` | Get column by ID |
+| `updateColumn(tableId, colId, updates)` | Update column |
+| `dropColumn(tableId, colId)` | Remove column |
+| `createLink(def)` | Create relationship between tables |
+| `removeLink(tableId, colId)` | Remove relationship |
+| `exportSchema()` | Export schema to JSON |
+| `importSchema(json, opts)` | Import schema from JSON |
+| `getTables()` | Get all table definitions |
+
+### Schema Import/Export
+
+```typescript
+// Export
+const exported = schema.exportSchema();
+// { version: '1.0', exportedAt: '...', tables: [...] }
+
+// Import (replace all)
+schema.importSchema(exported);
+
+// Import (merge with existing)
+schema.importSchema(exported, { merge: true });
+```
+
 ## Model Factory Functions
 
 ```typescript

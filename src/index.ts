@@ -287,6 +287,17 @@ export {
 // Models
 export { Model, type IModel, type ModelOptions } from './models/Model';
 
+// Schema Management
+export {
+  SchemaManager,
+  createSchemaManager,
+  type ISchemaManager,
+  type ColumnDefinition,
+  type TableDefinition,
+  type LinkDefinition,
+  type SchemaExport,
+} from './schema';
+
 // Query utilities
 export { buildFormulaExpression } from './query/formulaBuilder';
 export { buildRollupSubquery } from './query/rollupBuilder';

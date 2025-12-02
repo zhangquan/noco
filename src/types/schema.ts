@@ -3,7 +3,8 @@
  * @module types/schema
  */
 
-import type { Column, Table } from './column';
+import type { Column } from './column';
+import type { Table } from './table';
 
 // ============================================================================
 // Relationship Description
