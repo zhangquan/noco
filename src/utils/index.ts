@@ -5,3 +5,4 @@
 
 export * from './sanitize';
 export * from './columnUtils';
+export * from './rowParser';

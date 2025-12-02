@@ -5,10 +5,11 @@
 
 import type { Knex } from 'knex';
 import type { Column, Table } from '../types';
-import { UITypes } from '../types';
+import { UITypes, getColumnName } from '../types';
 import { getColumnByName, getColumnById, isVirtualColumn, getTableByIdOrThrow } from '../utils/columnUtils';
 import { getColumnExpressionWithCast, getColumnExpression } from './sqlBuilder';
 import { getFunction } from '../functions';
+import { TABLE_DATA } from '../config';
 
 // ============================================================================
 // AST Types
@@ -345,7 +346,8 @@ async function buildVirtualColumnRef(
             const lookupColumn = getColumnById(options.fk_lookup_column_id, relatedTable);
             if (lookupColumn) {
               const lookupSqlCol = getColumnExpression(lookupColumn, relatedTable, 'lookup_ref');
-              return `(SELECT ${lookupSqlCol} FROM nc_bigtable lookup_ref WHERE lookup_ref.fk_table_id = '${relatedTable.id}' AND lookup_ref.id = nc_bigtable.data ->> '${relationColumn.column_name}' LIMIT 1)`;
+              const relationColName = getColumnName(relationColumn);
+              return `(SELECT ${lookupSqlCol} FROM ${TABLE_DATA} lookup_ref WHERE lookup_ref.table_id = '${relatedTable.id}' AND lookup_ref.id = ${TABLE_DATA}.data ->> '${relationColName}' LIMIT 1)`;
             }
           }
         }

@@ -40,8 +40,8 @@ export interface ListArgs {
  * GroupBy query arguments
  */
 export interface GroupByArgs extends ListArgs {
-  /** Column name to group by */
-  column_name: string;
+  /** Column ID or name to group by */
+  columnId: string;
   /** Aggregation function (count, sum, avg, min, max) */
   aggregation?: string;
 }

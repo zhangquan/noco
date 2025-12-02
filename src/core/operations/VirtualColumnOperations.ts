@@ -99,7 +99,7 @@ export class VirtualColumnOperations implements IVirtualColumnOperations {
       }
     } catch (error) {
       // Log error but don't fail the query
-      console.warn(`Failed to build virtual column ${column.title}:`, error);
+      this.ctx.config.logger.warn(`Failed to build virtual column ${column.title}:`, error);
     }
   }
 

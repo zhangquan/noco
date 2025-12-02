@@ -1,6 +1,6 @@
-# NocoDB Database Layer
+# JSONB Model
 
-A clean, extensible database abstraction layer for PostgreSQL with JSONB storage using **composition pattern**.
+A flexible, extensible database abstraction layer for PostgreSQL with JSONB storage using **composition pattern**.
 
 ## Features
 
@@ -15,13 +15,13 @@ A clean, extensible database abstraction layer for PostgreSQL with JSONB storage
 ## Installation
 
 ```bash
-npm install nocodb-db-layer
+npm install jsonb-model
 ```
 
 ## Quick Start
 
 ```typescript
-import { createModel, createTables } from 'nocodb-db-layer';
+import { createModel, initDatabase } from 'jsonb-model';
 import knex from 'knex';
 
 // Setup database connection
@@ -30,18 +30,17 @@ const db = knex({
   connection: 'postgresql://localhost/mydb',
 });
 
-// Create required tables
-await createTables(db);
+// Initialize database schema
+await initDatabase(db);
 
 // Define your table schema
 const tables = [
   {
     id: 'users',
     title: 'Users',
-    table_name: 'users',
     columns: [
-      { id: 'name', title: 'Name', column_name: 'name', uidt: 'SingleLineText' },
-      { id: 'email', title: 'Email', column_name: 'email', uidt: 'Email' },
+      { id: 'name', title: 'Name', uidt: 'SingleLineText' },
+      { id: 'email', title: 'Email', uidt: 'Email' },
     ],
   },
 ];
@@ -319,6 +318,8 @@ interface ModelOptions {
 }
 
 // Custom model configuration
+import { silentLogger, consoleLogger } from 'jsonb-model';
+
 const model = new Model({
   db,
   tableId: 'users',
@@ -327,6 +328,8 @@ const model = new Model({
     limitDefault: 25,
     limitMin: 1,
     limitMax: 1000,
+    logger: consoleLogger,    // or silentLogger, or custom logger
+    queryTimeout: 30000,      // 30 seconds timeout
   },
 }, {
   virtualColumns: true,
@@ -336,31 +339,53 @@ const model = new Model({
 });
 ```
 
+## Custom Logger
+
+You can provide a custom logger implementing the `Logger` interface:
+
+```typescript
+import { Logger } from 'jsonb-model';
+
+const customLogger: Logger = {
+  debug: (msg, ...args) => myLogger.debug(msg, ...args),
+  info: (msg, ...args) => myLogger.info(msg, ...args),
+  warn: (msg, ...args) => myLogger.warn(msg, ...args),
+  error: (msg, ...args) => myLogger.error(msg, ...args),
+};
+
+const model = createModel({
+  db,
+  tableId: 'users',
+  tables,
+  config: { logger: customLogger },
+});
+```
+
 ## Database Schema
 
 The library uses two tables:
 
-### `nc_bigtable` - Main data table
+### `jm_data` - Main data table
 
 | Column | Type | Description |
 |--------|------|-------------|
-| id | VARCHAR | Primary key (ULID) |
-| fk_table_id | VARCHAR | Table identifier |
+| id | VARCHAR(26) | Primary key (ULID) |
+| table_id | VARCHAR(36) | Table identifier for data isolation |
+| data | JSONB | User data stored as JSONB |
 | created_at | TIMESTAMP | Creation time |
 | updated_at | TIMESTAMP | Last update time |
-| created_by | VARCHAR | Creator user ID |
-| updated_by | VARCHAR | Last updater user ID |
-| data | JSONB | Row data |
+| created_by | VARCHAR(36) | Creator user ID |
+| updated_by | VARCHAR(36) | Last updater user ID |
 
-### `nc_bigtable_relations` - Relations table
+### `jm_record_links` - Record links table
 
 | Column | Type | Description |
 |--------|------|-------------|
-| id | VARCHAR | Primary key (ULID) |
-| fk_parent_id | VARCHAR | Parent record ID |
-| fk_child_id | VARCHAR | Child record ID |
-| fk_mm_parent_column_id | VARCHAR | Parent link column ID |
-| fk_mm_child_column_id | VARCHAR | Child link column ID |
+| id | VARCHAR(26) | Primary key (ULID) |
+| source_record_id | VARCHAR(26) | Source record ID |
+| target_record_id | VARCHAR(26) | Target record ID |
+| link_field_id | VARCHAR(36) | Link field ID |
+| inverse_field_id | VARCHAR(36) | Inverse field ID (bidirectional) |
 | created_at | TIMESTAMP | Creation time |
 
 ## Supported Column Types
@@ -384,12 +409,12 @@ The library uses two tables:
 ## Error Handling
 
 ```typescript
-import { NcError, ErrorCode } from 'nocodb-db-layer';
+import { ModelError, ErrorCode } from 'jsonb-model';
 
 try {
   await model.readByPk('nonexistent');
 } catch (error) {
-  if (error instanceof NcError) {
+  if (error instanceof ModelError) {
     console.log(error.code);        // ErrorCode.NOT_FOUND
     console.log(error.statusCode);  // 404
     console.log(error.details);     // { id: 'nonexistent' }
@@ -397,9 +422,9 @@ try {
 }
 
 // Use static factory methods
-NcError.notFound('Record not found');
-NcError.badRequest('Invalid input');
-NcError.validationError('Field required', { field: 'name' });
+ModelError.notFound('Record not found');
+ModelError.badRequest('Invalid input');
+ModelError.validationError('Field required', { field: 'name' });
 ```
 
 ## License

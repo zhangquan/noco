@@ -13,17 +13,32 @@ import type { Column } from './column';
  * Table/Model definition
  */
 export interface Table {
+  /** Unique table identifier */
   id: string;
+  /** Display title */
   title: string;
-  table_name: string;
+  /** Table name (optional, defaults to id) */
+  name?: string;
   /** Is many-to-many junction table */
   mm?: boolean;
+  /** Table type */
   type?: 'table' | 'view';
+  /** Additional metadata */
   meta?: Record<string, unknown>;
+  /** Column definitions */
   columns?: Column[];
+  /** Display order */
   order?: number;
-  fk_base_id?: string;
-  fk_project_id?: string;
+  /** Timestamps */
+  createdAt?: string;
+  updatedAt?: string;
+}
+
+/**
+ * @deprecated Use Table with name instead of table_name
+ */
+export interface LegacyTable extends Omit<Table, 'name' | 'createdAt' | 'updatedAt'> {
+  table_name?: string;
   created_at?: string;
   updated_at?: string;
 }

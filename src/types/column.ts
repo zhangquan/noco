@@ -156,10 +156,14 @@ export type ColumnOption =
  * Column definition
  */
 export interface Column {
+  /** Unique column identifier */
   id: string;
+  /** Display title */
   title: string;
-  column_name: string;
-  uidt: UITypes;
+  /** Column name in data (defaults to id if not specified) */
+  name?: string;
+  /** UI type */
+  uidt: UITypes | string;
   /** Database type */
   dt?: string;
   /** Is primary key */
@@ -167,25 +171,34 @@ export interface Column {
   /** Is primary value (display column) */
   pv?: boolean;
   /** Is required */
-  rqd?: boolean;
-  /** Is unsigned */
-  un?: boolean;
-  /** Is auto increment */
-  ai?: boolean;
+  required?: boolean;
   /** Default value */
-  cdf?: string;
-  /** Column comment */
-  cc?: string;
+  defaultValue?: unknown;
   /** Column metadata */
   meta?: Record<string, unknown>;
   /** Is system column */
   system?: boolean;
   /** Display order */
   order?: number;
-  /** Foreign key to model */
-  fk_model_id?: string;
   /** Column-specific options */
+  options?: ColumnOption;
+  
+  // Legacy field names (deprecated)
+  /** @deprecated Use name instead */
+  column_name?: string;
+  /** @deprecated Use required instead */
+  rqd?: boolean;
+  /** @deprecated Use defaultValue instead */
+  cdf?: string;
+  /** @deprecated Use options instead */
   colOptions?: ColumnOption;
+}
+
+/**
+ * Get the effective column name (handles legacy field)
+ */
+export function getColumnName(column: Column): string {
+  return column.name || column.column_name || column.id;
 }
 
 // ============================================================================
@@ -229,9 +242,9 @@ export const SYSTEM_COLUMN_NAMES: Partial<Record<UITypes, string>> = {
  * Default ID column definition
  */
 export const DEFAULT_ID_COLUMN: Column = {
-  id: '__nc_id__',
+  id: '__jm_id__',
   title: 'Id',
-  column_name: 'id',
+  name: 'id',
   uidt: UITypes.ID,
   pk: true,
   system: true,

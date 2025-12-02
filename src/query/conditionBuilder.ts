@@ -5,7 +5,7 @@
 
 import type { Knex } from 'knex';
 import type { Column, Table, Filter, FilterOperator } from '../types';
-import { UITypes } from '../types';
+import { UITypes, getColumnName } from '../types';
 import { getColumnById, getColumnsWithPk, isVirtualColumn } from '../utils/columnUtils';
 import { getColumnExpressionWithCast } from './sqlBuilder';
 
@@ -394,11 +394,12 @@ async function parseLookupCondition(
   }
 
   const lookupSqlCol = getColumnExpression(lookupColumn, relatedTable, 'lookup_table');
+  const relationColName = getColumnName(relationColumn);
 
   return (qb: Knex.QueryBuilder) => {
     const subQuery = createQueryBuilder(db, relatedTable, 'lookup_table')
       .select(db.raw(lookupSqlCol))
-      .whereRaw(`lookup_table.id = nc_bigtable.data ->> ?`, [relationColumn.column_name]);
+      .whereRaw(`lookup_table.id = jm_data.data ->> ?`, [relationColName]);
 
     applyOperator(qb, db, `(${subQuery.toQuery()})`, filter.comparison_op!, filter.value, column);
   };
@@ -451,7 +452,7 @@ export function parseWhereString(whereStr: string, table: Table): Filter[] {
     if (match) {
       const [, fieldName, op, value] = match;
       const column = columns.find(
-        (c) => c.column_name === fieldName || c.title === fieldName
+        (c) => getColumnName(c) === fieldName || c.title === fieldName || c.id === fieldName
       );
 
       if (column) {

@@ -5,8 +5,8 @@
 
 import type { Knex } from 'knex';
 import type { Column, Table, RollupFunction, RollupColumnOption, LinkColumnOption } from '../types';
-import { RelationTypes } from '../types';
-import { TABLE_DATA, TABLE_RELATIONS } from '../config';
+import { RelationTypes, getColumnName } from '../types';
+import { TABLE_DATA, TABLE_LINKS } from '../config';
 import { getColumnById, getTableByIdOrThrow } from '../utils/columnUtils';
 import { getColumnExpressionWithCast } from './sqlBuilder';
 
@@ -74,7 +74,7 @@ export async function buildRollupSubquery(
 
   switch (relationOptions.type) {
     case RelationTypes.MANY_TO_MANY:
-      return buildMmRollup(table, relatedTable, relationOptions, rollupSqlCol, rollup_function, tables, db, alias);
+      return buildMmRollup(table, relatedTable, relationOptions, rollupSqlCol, rollup_function, tables, db, alias, relationColumn.id);
 
     case RelationTypes.HAS_MANY:
       return buildHmRollup(table, relatedTable, relationColumn, rollupSqlCol, rollup_function, db, alias);
@@ -99,24 +99,25 @@ function buildMmRollup(
   rollupFunction: RollupFunction,
   tables: Table[],
   db: Knex,
-  alias?: string
+  alias?: string,
+  relationColumnId?: string
 ): Knex.QueryBuilder | Knex.Raw {
-  const mmTableId = relationOptions.fk_mm_model_id || relationOptions.mm_model_id;
-  if (!mmTableId) {
+  const parentAlias = alias || TABLE_DATA;
+
+  // Use the relation column ID to find linked children
+  const columnId = relationColumnId || relationOptions.fk_mm_parent_column_id;
+  if (!columnId) {
     return db.raw('NULL');
   }
 
-  const mmTable = getTableByIdOrThrow(tables, mmTableId);
-  const parentAlias = alias || 'nc_bigtable';
-
-  const childIdsSubquery = db(`${TABLE_RELATIONS} AS mm`)
-    .select('mm.fk_child_id')
-    .where('mm.fk_table_id', mmTable.id)
-    .whereRaw(`mm.fk_parent_id = ${parentAlias}.id`);
+  const childIdsSubquery = db(`${TABLE_LINKS} AS mm`)
+    .select('mm.target_record_id')
+    .where('mm.link_field_id', columnId)
+    .whereRaw(`mm.source_record_id = ${parentAlias}.id`);
 
   return db(`${TABLE_DATA} AS rollup_child`)
     .select(db.raw(getAggregation(rollupFunction, rollupSqlCol)))
-    .where('rollup_child.fk_table_id', relatedTable.id)
+    .where('rollup_child.table_id', relatedTable.id)
     .whereIn('rollup_child.id', childIdsSubquery);
 }
 
@@ -129,21 +130,21 @@ function buildHmRollup(
   db: Knex,
   alias?: string
 ): Knex.QueryBuilder {
-  const parentAlias = alias || 'nc_bigtable';
+  const parentAlias = alias || TABLE_DATA;
   const relationOptions = relationColumn.colOptions as LinkColumnOption;
 
-  let fkColumnName = 'fk_parent_id';
+  let fkColName = 'fk_parent_id';
   if (relationOptions.fk_child_column_id) {
     const fkColumn = getColumnById(relationOptions.fk_child_column_id, relatedTable);
     if (fkColumn) {
-      fkColumnName = fkColumn.column_name;
+      fkColName = getColumnName(fkColumn);
     }
   }
 
   return db(`${TABLE_DATA} AS rollup_child`)
     .select(db.raw(getAggregation(rollupFunction, rollupSqlCol)))
-    .where('rollup_child.fk_table_id', relatedTable.id)
-    .whereRaw(`rollup_child.data ->> '${fkColumnName}' = ${parentAlias}.id`);
+    .where('rollup_child.table_id', relatedTable.id)
+    .whereRaw(`rollup_child.data ->> '${fkColName}' = ${parentAlias}.id`);
 }
 
 function buildBtRollup(
@@ -155,13 +156,13 @@ function buildBtRollup(
   db: Knex,
   alias?: string
 ): Knex.QueryBuilder {
-  const parentAlias = alias || 'nc_bigtable';
-  const fkColumnName = relationColumn.column_name;
+  const parentAlias = alias || TABLE_DATA;
+  const fkColName = getColumnName(relationColumn);
 
   return db(`${TABLE_DATA} AS rollup_child`)
     .select(db.raw(getAggregation(rollupFunction, rollupSqlCol)))
-    .where('rollup_child.fk_table_id', relatedTable.id)
-    .whereRaw(`rollup_child.id = ${parentAlias}.data ->> '${fkColumnName}'`);
+    .where('rollup_child.table_id', relatedTable.id)
+    .whereRaw(`rollup_child.id = ${parentAlias}.data ->> '${fkColName}'`);
 }
 
 // ============================================================================

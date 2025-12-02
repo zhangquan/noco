@@ -10,12 +10,17 @@
 /**
  * Main data table for storing records as JSONB
  */
-export const TABLE_DATA = 'nc_bigtable';
+export const TABLE_DATA = 'jm_data';
 
 /**
- * Relations table for many-to-many links
+ * Record links table for relationships between records
  */
-export const TABLE_RELATIONS = 'nc_bigtable_relations';
+export const TABLE_LINKS = 'jm_record_links';
+
+/**
+ * @deprecated Use TABLE_LINKS instead
+ */
+export const TABLE_RELATIONS = TABLE_LINKS;
 
 // ============================================================================
 // Pagination Defaults
@@ -48,6 +53,40 @@ export const BULK_OPERATIONS = {
 } as const;
 
 // ============================================================================
+// Logger Interface
+// ============================================================================
+
+/**
+ * Logger interface for customizable logging
+ */
+export interface Logger {
+  debug(message: string, ...args: unknown[]): void;
+  info(message: string, ...args: unknown[]): void;
+  warn(message: string, ...args: unknown[]): void;
+  error(message: string, ...args: unknown[]): void;
+}
+
+/**
+ * Default console logger
+ */
+export const consoleLogger: Logger = {
+  debug: (message, ...args) => console.debug(`[jsonb-model] ${message}`, ...args),
+  info: (message, ...args) => console.info(`[jsonb-model] ${message}`, ...args),
+  warn: (message, ...args) => console.warn(`[jsonb-model] ${message}`, ...args),
+  error: (message, ...args) => console.error(`[jsonb-model] ${message}`, ...args),
+};
+
+/**
+ * Silent logger (no output)
+ */
+export const silentLogger: Logger = {
+  debug: () => {},
+  info: () => {},
+  warn: () => {},
+  error: () => {},
+};
+
+// ============================================================================
 // Model Configuration Type
 // ============================================================================
 
@@ -61,6 +100,10 @@ export interface ModelConfig {
   limitMin: number;
   /** Maximum limit */
   limitMax: number;
+  /** Logger instance */
+  logger: Logger;
+  /** Query timeout in milliseconds (0 = no timeout) */
+  queryTimeout: number;
 }
 
 /**
@@ -70,4 +113,6 @@ export const DEFAULT_MODEL_CONFIG: ModelConfig = {
   limitDefault: PAGINATION.DEFAULT_LIMIT,
   limitMin: PAGINATION.MIN_LIMIT,
   limitMax: PAGINATION.MAX_LIMIT,
+  logger: consoleLogger,
+  queryTimeout: 30000,
 };

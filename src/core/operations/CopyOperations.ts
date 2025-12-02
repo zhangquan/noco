@@ -7,12 +7,13 @@ import type { Knex } from 'knex';
 import { ulid } from 'ulid';
 import type { IModelContext, ModelContext } from '../ModelContext';
 import type { Column, Table, RequestContext, Record } from '../../types';
-import { UITypes } from '../../types';
-import { TABLE_DATA, TABLE_RELATIONS } from '../../config';
+import { UITypes, getColumnName } from '../../types';
+import { TABLE_DATA, TABLE_LINKS } from '../../config';
 import {
   getColumnsWithPk,
   getTableByIdOrThrow,
 } from '../../utils/columnUtils';
+import { parseRow } from '../../utils/rowParser';
 import { getChildTableIdFromMM } from '../../query/sqlBuilder';
 import type { CrudOperations } from './CrudOperations';
 import type { LinkOperations } from './LinkOperations';
@@ -226,14 +227,14 @@ export class CopyOperations implements ICopyOperations {
 
     try {
       // Get source relations
-      const relations = await this.ctx.db(TABLE_RELATIONS)
-        .select('fk_child_id')
-        .where('fk_mm_parent_column_id', column.id)
-        .where('fk_parent_id', sourceId);
+      const relations = await this.ctx.db(TABLE_LINKS)
+        .select('target_record_id')
+        .where('link_field_id', column.id)
+        .where('source_record_id', sourceId);
 
       if (relations.length === 0) return;
 
-      const childIds = relations.map((r) => r.fk_child_id);
+      const childIds = relations.map((r) => r.target_record_id);
 
       if (deepCopy && currentDepth < maxDepth) {
         // Deep copy: duplicate child records recursively
@@ -261,7 +262,7 @@ export class CopyOperations implements ICopyOperations {
         await this.linkOps.mmLink(column, childIds, targetId, trx);
       }
     } catch (error) {
-      console.warn(`Failed to copy relations for column ${column.title}:`, error);
+      this.ctx.config.logger.warn(`Failed to copy relations for column ${column.title}:`, error);
     }
   }
 
@@ -277,7 +278,7 @@ export class CopyOperations implements ICopyOperations {
   ): Record {
     const copy: Record = {};
     const columns = getColumnsWithPk(this.ctx.table);
-    const systemColumns = ['id', 'created_at', 'updated_at', 'created_by', 'updated_by'];
+    const systemColumns = ['id', 'created_at', 'updated_at', 'created_by', 'updated_by', 'createdAt', 'updatedAt'];
 
     for (const [key, value] of Object.entries(source)) {
       // Skip system columns
@@ -288,7 +289,7 @@ export class CopyOperations implements ICopyOperations {
 
       // Skip virtual columns
       const column = columns.find(
-        (c) => c.id === key || c.title === key || c.column_name === key
+        (c) => c.id === key || c.title === key || getColumnName(c) === key
       );
       if (column && this.isVirtualColumn(column)) continue;
 
@@ -317,11 +318,11 @@ export class CopyOperations implements ICopyOperations {
 
     const qb = this.ctx.db(TABLE_DATA)
       .select('*')
-      .where('fk_table_id', childTable.id)
+      .where('table_id', childTable.id)
       .whereIn('id', childIds);
 
     const rows = await qb;
-    return rows.map((row) => this.parseRow(row));
+    return rows.map((row) => parseRow(row));
   }
 
   protected async insertRecord(
@@ -335,7 +336,7 @@ export class CopyOperations implements ICopyOperations {
 
     const record = {
       id: id || ulid(),
-      fk_table_id: table.id,
+      table_id: table.id,
       created_at: now,
       updated_at: now,
       created_by: reqCtx?.user?.id ?? null,
@@ -347,27 +348,6 @@ export class CopyOperations implements ICopyOperations {
     if (trx) qb.transacting(trx);
 
     await qb.insert(record);
-  }
-
-  protected parseRow(row: Record): Record {
-    if (!row) return row;
-
-    if (typeof row.data === 'string') {
-      try {
-        const data = JSON.parse(row.data);
-        const { data: _, ...systemFields } = row;
-        return { ...systemFields, ...data };
-      } catch {
-        return row;
-      }
-    }
-
-    if (row.data && typeof row.data === 'object') {
-      const { data, ...systemFields } = row;
-      return { ...systemFields, ...(data as object) };
-    }
-
-    return row;
   }
 }
 

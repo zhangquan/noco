@@ -5,7 +5,7 @@
 
 import type { Knex } from 'knex';
 import type { Column, Table, Sort, SortDirection } from '../types';
-import { UITypes } from '../types';
+import { UITypes, getColumnName } from '../types';
 import { getColumnById, isVirtualColumn } from '../utils/columnUtils';
 import { getColumnExpressionWithCast, getColumnExpression, createQueryBuilder } from './sqlBuilder';
 
@@ -178,9 +178,10 @@ async function applyLookupSort(
   }
 
   const lookupSqlCol = getColumnExpression(lookupColumn, relatedTable, 'sort_lookup');
+  const relationColName = getColumnName(relationColumn);
   const subQuery = createQueryBuilder(db, relatedTable, 'sort_lookup')
     .select(db.raw(lookupSqlCol))
-    .whereRaw(`sort_lookup.id = nc_bigtable.data ->> ?`, [relationColumn.column_name])
+    .whereRaw(`sort_lookup.id = jm_data.data ->> ?`, [relationColName])
     .limit(1);
 
   const nullOrder = direction === 'asc' ? 'NULLS LAST' : 'NULLS FIRST';
@@ -247,7 +248,7 @@ export function parseSortString(sortStr: string, table: Table): Sort[] {
     }
 
     const column = columns.find(
-      (c) => c.column_name === fieldName || c.title === fieldName
+      (c) => getColumnName(c) === fieldName || c.title === fieldName || c.id === fieldName
     );
 
     if (column) {

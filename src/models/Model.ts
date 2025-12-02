@@ -34,7 +34,10 @@ import type {
   Record,
 } from '../types';
 import { parseFields } from '../utils/columnUtils';
-import { buildSelectExpressions } from '../query/sqlBuilder';
+import { parseRow } from '../utils/rowParser';
+import { buildSelectExpressions, buildPkWhere, applyPagination } from '../query/sqlBuilder';
+import { applyConditions, parseWhereString } from '../query/conditionBuilder';
+import { applySorts, parseSortString } from '../query/sortBuilder';
 
 // ============================================================================
 // Model Options
@@ -165,7 +168,6 @@ export class Model implements IModel {
     const qb = this.crudOps.getQueryBuilder();
     await this.buildSelectWithVirtual(qb, fields);
     
-    const { buildPkWhere } = await import('../query/sqlBuilder');
     qb.where(buildPkWhere(this.context.table, id, this.context.alias));
     qb.limit(1);
 
@@ -194,7 +196,6 @@ export class Model implements IModel {
       await this.applyFiltersAndSorts(qb, args);
     }
 
-    const { applyPagination } = await import('../query/sqlBuilder');
     applyPagination(qb, args.limit, args.offset, this.context.config);
 
     return this.executeQuery<Record[]>(qb);
@@ -292,9 +293,6 @@ export class Model implements IModel {
     qb: Knex.QueryBuilder,
     args: ListArgs
   ): Promise<void> {
-    const { applyConditions, parseWhereString } = await import('../query/conditionBuilder');
-    const { applySorts, parseSortString } = await import('../query/sortBuilder');
-
     if (args.filterArr?.length) {
       await applyConditions(
         args.filterArr,
@@ -344,36 +342,20 @@ export class Model implements IModel {
 
   protected async executeQuery<T = Record[]>(qb: Knex.QueryBuilder): Promise<T> {
     try {
+      // Apply timeout if configured
+      if (this.context.config.queryTimeout > 0) {
+        qb.timeout(this.context.config.queryTimeout, { cancel: true });
+      }
+
       const result = await qb;
       if (Array.isArray(result)) {
-        return result.map((row) => this.parseRow(row)) as T;
+        return result.map((row) => parseRow(row)) as T;
       }
       return result as T;
     } catch (error) {
-      console.error('Query execution error:', error);
+      this.context.config.logger.error('Query execution error:', error);
       throw error;
     }
-  }
-
-  protected parseRow(row: Record): Record {
-    if (!row) return row;
-
-    if (typeof row.data === 'string') {
-      try {
-        const data = JSON.parse(row.data);
-        const { data: _, ...systemFields } = row;
-        return { ...systemFields, ...data };
-      } catch {
-        return row;
-      }
-    }
-
-    if (row.data && typeof row.data === 'object') {
-      const { data, ...systemFields } = row;
-      return { ...systemFields, ...(data as object) };
-    }
-
-    return row;
   }
 }
 

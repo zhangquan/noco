@@ -5,8 +5,8 @@
 
 import type { Knex } from 'knex';
 import type { Column, Table } from '../types';
-import { UITypes } from '../types';
-import { TABLE_DATA, TABLE_RELATIONS, ModelConfig, DEFAULT_MODEL_CONFIG } from '../config';
+import { UITypes, getColumnName } from '../types';
+import { TABLE_DATA, TABLE_LINKS, ModelConfig, DEFAULT_MODEL_CONFIG } from '../config';
 import {
   isSystemColumn,
   isVirtualColumn,
@@ -23,7 +23,7 @@ import {
  * Get SQL table name for a table
  */
 export function getTableName(table: Table, alias?: string): string {
-  return table.mm ? (alias || TABLE_RELATIONS) : (alias || TABLE_DATA);
+  return table.mm ? (alias || TABLE_LINKS) : (alias || TABLE_DATA);
 }
 
 /**
@@ -38,6 +38,33 @@ export function getTableWithAlias(table: Table, alias: string): Record<string, s
 // ============================================================================
 
 /**
+ * Sanitize column name for SQL (prevent SQL injection)
+ * Exported for use in other query builders
+ */
+export function sanitizeColumnName(name: string): string {
+  // Only allow alphanumeric, underscore, and dash
+  if (!/^[a-zA-Z_][a-zA-Z0-9_-]*$/.test(name)) {
+    // eslint-disable-next-line @typescript-eslint/no-var-requires
+    const { ModelError } = require('../core/NcError');
+    throw new ModelError(`Invalid column name: ${name}`, 'BAD_REQUEST', { columnName: name });
+  }
+  return name;
+}
+
+/**
+ * Sanitize alias/identifier for SQL
+ */
+export function sanitizeIdentifier(identifier: string): string {
+  // Only allow alphanumeric and underscore
+  if (!/^[a-zA-Z_][a-zA-Z0-9_]*$/.test(identifier)) {
+    // eslint-disable-next-line @typescript-eslint/no-var-requires
+    const { ModelError } = require('../core/NcError');
+    throw new ModelError(`Invalid SQL identifier: ${identifier}`, 'BAD_REQUEST', { identifier });
+  }
+  return identifier;
+}
+
+/**
  * Get SQL column expression
  */
 export function getColumnExpression(
@@ -46,16 +73,18 @@ export function getColumnExpression(
   alias?: string
 ): string {
   const prefix = alias || getTableName(table);
+  const colName = getColumnName(column);
+  const safeColumnName = sanitizeColumnName(colName);
 
   // System columns or relation table: direct access
   if (isSystemColumn(column) || table.mm) {
-    const sysName = getSystemColumnName(column.uidt);
-    const columnName = sysName || column.column_name;
-    return `${prefix}.${columnName}`;
+    const sysName = getSystemColumnName(column.uidt as UITypes);
+    const columnName = sysName || safeColumnName;
+    return `${prefix}."${columnName}"`;
   }
 
-  // User columns: JSONB access
-  return `${prefix}.data ->> '${column.column_name}'`;
+  // User columns: JSONB access with safe column name
+  return `${prefix}.data ->> '${safeColumnName}'`;
 }
 
 /**
@@ -72,31 +101,31 @@ export function getColumnExpressionWithCast(
     return baseExpr;
   }
 
-  // Cast based on column type
+  // Cast based on column type using NULLIF to handle empty strings
   switch (column.uidt) {
     case UITypes.Number:
     case UITypes.AutoNumber:
     case UITypes.Rating:
-      return `CAST(${baseExpr} AS NUMERIC)`;
+      return `CAST(NULLIF(${baseExpr}, '') AS NUMERIC)`;
 
     case UITypes.Decimal:
     case UITypes.Currency:
     case UITypes.Percent:
-      return `CAST(${baseExpr} AS DECIMAL)`;
+      return `CAST(NULLIF(${baseExpr}, '') AS DECIMAL)`;
 
     case UITypes.Checkbox:
-      return `CAST(${baseExpr} AS BOOLEAN)`;
+      return `CAST(NULLIF(${baseExpr}, '') AS BOOLEAN)`;
 
     case UITypes.Date:
-      return `CAST(${baseExpr} AS DATE)`;
+      return `CAST(NULLIF(${baseExpr}, '') AS DATE)`;
 
     case UITypes.DateTime:
     case UITypes.CreatedTime:
     case UITypes.LastModifiedTime:
-      return `CAST(${baseExpr} AS TIMESTAMP)`;
+      return `CAST(NULLIF(${baseExpr}, '') AS TIMESTAMP)`;
 
     case UITypes.Time:
-      return `CAST(${baseExpr} AS TIME)`;
+      return `CAST(NULLIF(${baseExpr}, '') AS TIME)`;
 
     default:
       return baseExpr;
@@ -121,7 +150,7 @@ export function createQueryBuilder(
 
   // Filter by table_id for data isolation
   const tableAlias = alias || tableName;
-  query.where(`${tableAlias}.fk_table_id`, table.id);
+  query.where(`${tableAlias}.table_id`, table.id);
 
   return query;
 }

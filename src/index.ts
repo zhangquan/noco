@@ -1,13 +1,13 @@
 /**
- * NocoDB SQL Module
- * A modular database abstraction layer for PostgreSQL with JSONB storage
+ * JSONB Model
+ * A flexible database abstraction layer for PostgreSQL with JSONB storage
  *
- * @module nocodb-sql
+ * @module jsonb-model
  */
 
 import type { Knex } from 'knex';
 import type { Table } from './types';
-import { TABLE_DATA, TABLE_RELATIONS } from './config';
+import { TABLE_DATA, TABLE_LINKS } from './config';
 
 // ============================================================================
 // Model Factory - Main Entry Point
@@ -118,45 +118,76 @@ export function createMinimalModel(params: ModelContextParams): Model {
 // ============================================================================
 
 /**
- * Create database tables for data storage
+ * Initialize database schema - creates required tables for data storage
+ * @param db - Knex database instance
+ * @example
+ * ```typescript
+ * await initDatabase(db);
+ * ```
  */
-export async function createTables(db: Knex): Promise<void> {
-  // Main data table
+export async function initDatabase(db: Knex): Promise<void> {
+  // Main data table - stores all records with JSONB data
   const hasDataTable = await db.schema.hasTable(TABLE_DATA);
   if (!hasDataTable) {
     await db.schema.createTable(TABLE_DATA, (t) => {
-      t.string('id', 26).primary();
-      t.string('fk_table_id', 36).notNullable().index();
-      t.jsonb('data').notNullable().defaultTo('{}');
+      t.string('id', 26).primary();                          // ULID primary key
+      t.string('table_id', 36).notNullable().index();        // Table identifier for isolation
+      t.jsonb('data').notNullable().defaultTo('{}');         // User data as JSONB
       t.timestamp('created_at').defaultTo(db.fn.now());
       t.timestamp('updated_at').defaultTo(db.fn.now());
       t.string('created_by', 36).nullable();
       t.string('updated_by', 36).nullable();
+      
+      // Composite indexes for common queries
+      t.index(['table_id', 'created_at']);
+      t.index(['table_id', 'updated_at']);
     });
+
+    // GIN index for JSONB queries (must be done with raw SQL)
+    await db.raw(`CREATE INDEX IF NOT EXISTS idx_${TABLE_DATA}_data ON ${TABLE_DATA} USING GIN(data)`);
   }
 
-  // Relations table for many-to-many
-  const hasRelTable = await db.schema.hasTable(TABLE_RELATIONS);
-  if (!hasRelTable) {
-    await db.schema.createTable(TABLE_RELATIONS, (t) => {
-      t.string('id', 26).primary();
-      t.string('fk_parent_id', 26).notNullable().index();
-      t.string('fk_child_id', 26).notNullable().index();
-      t.string('fk_mm_parent_column_id', 36).notNullable().index();
-      t.string('fk_mm_child_column_id', 36).nullable();
+  // Record links table - stores relationships between records
+  const hasLinksTable = await db.schema.hasTable(TABLE_LINKS);
+  if (!hasLinksTable) {
+    await db.schema.createTable(TABLE_LINKS, (t) => {
+      t.string('id', 26).primary();                          // ULID primary key
+      t.string('source_record_id', 26).notNullable();        // Source record ID
+      t.string('target_record_id', 26).notNullable();        // Target record ID
+      t.string('link_field_id', 36).notNullable();           // Link field ID (defines the relationship)
+      t.string('inverse_field_id', 36).nullable();           // Inverse field ID (for bidirectional links)
       t.timestamp('created_at').defaultTo(db.fn.now());
-      t.unique(['fk_parent_id', 'fk_child_id', 'fk_mm_parent_column_id']);
+      
+      // Indexes for efficient lookups
+      t.index(['link_field_id', 'source_record_id']);        // Find targets for a source
+      t.index(['link_field_id', 'target_record_id']);        // Find sources for a target
+      t.index('source_record_id');                           // Cascade delete lookups
+      t.index('target_record_id');                           // Cascade delete lookups
+      
+      // Prevent duplicate links
+      t.unique(['source_record_id', 'target_record_id', 'link_field_id']);
     });
   }
 }
 
 /**
- * Drop database tables
+ * Drop database tables - use with caution, this will delete all data
+ * @param db - Knex database instance
  */
-export async function dropTables(db: Knex): Promise<void> {
-  await db.schema.dropTableIfExists(TABLE_RELATIONS);
+export async function dropDatabase(db: Knex): Promise<void> {
+  await db.schema.dropTableIfExists(TABLE_LINKS);
   await db.schema.dropTableIfExists(TABLE_DATA);
 }
+
+/**
+ * @deprecated Use initDatabase instead
+ */
+export const createTables = initDatabase;
+
+/**
+ * @deprecated Use dropDatabase instead
+ */
+export const dropTables = dropDatabase;
 
 // ============================================================================
 // Re-exports
@@ -183,15 +214,26 @@ export { UITypes } from './types';
 // Config
 export {
   TABLE_DATA,
-  TABLE_RELATIONS,
+  TABLE_LINKS,
+  TABLE_RELATIONS,  // deprecated alias
   PAGINATION,
   BULK_OPERATIONS,
   type ModelConfig,
+  type Logger,
   DEFAULT_MODEL_CONFIG,
+  consoleLogger,
+  silentLogger,
 } from './config';
 
-// Core
-export { NcError, ErrorCode, HTTP_STATUS, type NcErrorType } from './core/NcError';
+// Core - Error handling
+export { 
+  ModelError, 
+  NcError,  // deprecated alias
+  ErrorCode, 
+  HTTP_STATUS, 
+  type ModelErrorType,
+  type NcErrorType,  // deprecated alias
+} from './core/NcError';
 export {
   ModelContext,
   createContext,
@@ -241,3 +283,4 @@ export {
   getColumnsWithPk,
   parseFields,
 } from './utils/columnUtils';
+export { parseRow, parseRows } from './utils/rowParser';
