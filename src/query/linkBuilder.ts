@@ -5,8 +5,8 @@
 
 import type { Knex } from 'knex';
 import type { Column, Table, LinkColumnOption } from '../types';
-import { RelationTypes } from '../types';
-import { TABLE_DATA, TABLE_RELATIONS } from '../config';
+import { RelationTypes, getColumnName } from '../types';
+import { TABLE_DATA, TABLE_LINKS } from '../config';
 import { getColumnById, getTableByIdOrThrow } from '../utils/columnUtils';
 
 // ============================================================================
@@ -38,11 +38,11 @@ export function buildLinkCountSubquery(
     return db.raw('0');
   }
 
-  const parentAlias = alias || 'nc_bigtable';
+  const parentAlias = alias || TABLE_DATA;
 
   switch (options.type) {
     case RelationTypes.MANY_TO_MANY:
-      return buildMmLinkCount(options, tables, db, parentAlias);
+      return buildMmLinkCount(options, column.id, db, parentAlias);
 
     case RelationTypes.HAS_MANY:
       return buildHmLinkCount(options, column, tables, db, parentAlias);
@@ -66,10 +66,10 @@ function buildMmLinkCount(
   parentAlias: string
 ): Knex.QueryBuilder | Knex.Raw {
   // Use the column ID to count links for this specific relation
-  return db(`${TABLE_RELATIONS} AS link_count`)
+  return db(`${TABLE_LINKS} AS link_count`)
     .count('*')
-    .where('link_count.fk_mm_parent_column_id', columnId)
-    .whereRaw(`link_count.fk_parent_id = ${parentAlias}.id`);
+    .where('link_count.link_field_id', columnId)
+    .whereRaw(`link_count.source_record_id = ${parentAlias}.id`);
 }
 
 function buildHmLinkCount(
@@ -86,18 +86,18 @@ function buildHmLinkCount(
 
   const childTable = getTableByIdOrThrow(tables, childTableId);
 
-  let fkColumnName = 'fk_parent_id';
+  let fkColName = 'fk_parent_id';
   if (options.fk_child_column_id) {
     const fkColumn = getColumnById(options.fk_child_column_id, childTable);
     if (fkColumn) {
-      fkColumnName = fkColumn.column_name;
+      fkColName = getColumnName(fkColumn);
     }
   }
 
   return db(`${TABLE_DATA} AS link_count`)
     .count('*')
-    .where('link_count.fk_table_id', childTable.id)
-    .whereRaw(`link_count.data ->> '${fkColumnName}' = ${parentAlias}.id`);
+    .where('link_count.table_id', childTable.id)
+    .whereRaw(`link_count.data ->> '${fkColName}' = ${parentAlias}.id`);
 }
 
 function buildBtLinkCount(
@@ -106,9 +106,9 @@ function buildBtLinkCount(
   db: Knex,
   parentAlias: string
 ): Knex.Raw {
-  const fkColumnName = column.column_name;
+  const fkColName = getColumnName(column);
 
   return db.raw(
-    `CASE WHEN ${parentAlias}.data ->> '${fkColumnName}' IS NOT NULL THEN 1 ELSE 0 END`
+    `CASE WHEN ${parentAlias}.data ->> '${fkColName}' IS NOT NULL THEN 1 ELSE 0 END`
   );
 }

@@ -53,6 +53,40 @@ export const BULK_OPERATIONS = {
 } as const;
 
 // ============================================================================
+// Logger Interface
+// ============================================================================
+
+/**
+ * Logger interface for customizable logging
+ */
+export interface Logger {
+  debug(message: string, ...args: unknown[]): void;
+  info(message: string, ...args: unknown[]): void;
+  warn(message: string, ...args: unknown[]): void;
+  error(message: string, ...args: unknown[]): void;
+}
+
+/**
+ * Default console logger
+ */
+export const consoleLogger: Logger = {
+  debug: (message, ...args) => console.debug(`[jsonb-model] ${message}`, ...args),
+  info: (message, ...args) => console.info(`[jsonb-model] ${message}`, ...args),
+  warn: (message, ...args) => console.warn(`[jsonb-model] ${message}`, ...args),
+  error: (message, ...args) => console.error(`[jsonb-model] ${message}`, ...args),
+};
+
+/**
+ * Silent logger (no output)
+ */
+export const silentLogger: Logger = {
+  debug: () => {},
+  info: () => {},
+  warn: () => {},
+  error: () => {},
+};
+
+// ============================================================================
 // Model Configuration Type
 // ============================================================================
 
@@ -66,6 +100,10 @@ export interface ModelConfig {
   limitMin: number;
   /** Maximum limit */
   limitMax: number;
+  /** Logger instance */
+  logger: Logger;
+  /** Query timeout in milliseconds (0 = no timeout) */
+  queryTimeout: number;
 }
 
 /**
@@ -75,4 +113,6 @@ export const DEFAULT_MODEL_CONFIG: ModelConfig = {
   limitDefault: PAGINATION.DEFAULT_LIMIT,
   limitMin: PAGINATION.MIN_LIMIT,
   limitMax: PAGINATION.MAX_LIMIT,
+  logger: consoleLogger,
+  queryTimeout: 30000,
 };

@@ -10,6 +10,7 @@ import {
   VIRTUAL_COLUMN_TYPES,
   SYSTEM_COLUMN_NAMES,
   DEFAULT_ID_COLUMN,
+  getColumnName,
 } from '../types';
 
 // ============================================================================
@@ -22,7 +23,7 @@ import {
 export function isSystemColumn(column: Column): boolean {
   return (
     column.system === true ||
-    SYSTEM_COLUMN_TYPES.includes(column.uidt) ||
+    SYSTEM_COLUMN_TYPES.includes(column.uidt as UITypes) ||
     column.uidt === UITypes.ID
   );
 }
@@ -31,7 +32,7 @@ export function isSystemColumn(column: Column): boolean {
  * Check if a column is a virtual column (computed)
  */
 export function isVirtualColumn(column: Column): boolean {
-  return VIRTUAL_COLUMN_TYPES.includes(column.uidt);
+  return VIRTUAL_COLUMN_TYPES.includes(column.uidt as UITypes);
 }
 
 /**
@@ -87,7 +88,7 @@ export function getColumnById(columnId: string, table: Table): Column | undefine
  */
 export function getColumnByName(columnName: string, table: Table): Column | undefined {
   return getColumnsWithPk(table).find(
-    (col) => col.column_name === columnName || col.title === columnName
+    (col) => getColumnName(col) === columnName || col.title === columnName || col.id === columnName
   );
 }
 
@@ -108,7 +109,10 @@ export function getTableById(tableId: string, tables: Table[]): Table | undefine
 export function getTableByIdOrThrow(tables: Table[], tableId: string): Table {
   const table = getTableById(tableId, tables);
   if (!table) {
-    throw new Error(`Table '${tableId}' not found`);
+    // Import dynamically to avoid circular dependency
+    // eslint-disable-next-line @typescript-eslint/no-var-requires
+    const { ModelError } = require('../core/NcError');
+    throw new ModelError(`Table '${tableId}' not found`, 'NOT_FOUND', { tableId });
   }
   return table;
 }
@@ -119,7 +123,10 @@ export function getTableByIdOrThrow(tables: Table[], tableId: string): Table {
 export function getColumnByIdOrThrow(columnId: string, table: Table): Column {
   const column = getColumnById(columnId, table);
   if (!column) {
-    throw new Error(`Column '${columnId}' not found`);
+    // Import dynamically to avoid circular dependency
+    // eslint-disable-next-line @typescript-eslint/no-var-requires
+    const { ModelError } = require('../core/NcError');
+    throw new ModelError(`Column '${columnId}' not found`, 'NOT_FOUND', { columnId });
   }
   return column;
 }
@@ -153,6 +160,6 @@ export function parseFields(
     (col) =>
       fieldList.includes(col.id) ||
       fieldList.includes(col.title) ||
-      fieldList.includes(col.column_name)
+      fieldList.includes(getColumnName(col))
   );
 }

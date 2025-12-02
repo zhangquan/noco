@@ -8,7 +8,7 @@ import { ulid } from 'ulid';
 import type { IModelContext } from '../ModelContext';
 import { NcError } from '../NcError';
 import type { Column, Table, ListArgs, GroupByArgs, BulkOptions, RequestContext, Record } from '../../types';
-import { UITypes } from '../../types';
+import { UITypes, getColumnName } from '../../types';
 import { TABLE_DATA } from '../../config';
 import { sanitize } from '../../utils/sanitize';
 import {
@@ -17,6 +17,7 @@ import {
   getColumnsWithPk,
   parseFields,
 } from '../../utils/columnUtils';
+import { parseRow } from '../../utils/rowParser';
 import {
   createQueryBuilder,
   createInsertBuilder,
@@ -182,7 +183,7 @@ export class CrudOperations implements ICrudOperations {
     const qb = this.ctx.db(TABLE_DATA);
     if (trx) qb.transacting(trx);
     qb.where('id', id);
-    qb.where('fk_table_id', this.ctx.table.id);
+    qb.where('table_id', this.ctx.table.id);
     await qb.update(mapped);
 
     return this.readByPk(id) as Promise<Record>;
@@ -201,7 +202,7 @@ export class CrudOperations implements ICrudOperations {
     const qb = this.ctx.db(TABLE_DATA);
     if (trx) qb.transacting(trx);
     qb.where('id', id);
-    qb.where('fk_table_id', this.ctx.table.id);
+    qb.where('table_id', this.ctx.table.id);
 
     return qb.delete();
   }
@@ -213,18 +214,35 @@ export class CrudOperations implements ICrudOperations {
   async bulkInsert(data: Record[], options: BulkOptions = {}): Promise<Record[]> {
     const { chunkSize = 100, cookie, trx } = options;
 
-    const executeInserts = async (transaction?: Knex.Transaction) => {
-      const results: Record[] = [];
+    const executeInserts = async (transaction?: Knex.Transaction): Promise<Record[]> => {
+      const allIds: string[] = [];
       const chunks = this.chunk(data, chunkSize);
 
       for (const batch of chunks) {
-        const inserted = await Promise.all(
-          batch.map((item) => this.insert(item, transaction, cookie))
-        );
-        results.push(...inserted);
+        // Prepare all records for batch insert
+        const mappedBatch = batch.map((item) => {
+          const sanitized = sanitize(item) as Record;
+          this.populatePk(sanitized);
+          return this.mapDataForInsert(sanitized, cookie);
+        });
+
+        // Batch insert
+        const qb = this.getInsertBuilder();
+        if (transaction) qb.transacting(transaction);
+        await qb.insert(mappedBatch);
+
+        // Collect IDs
+        allIds.push(...mappedBatch.map((r) => r.id as string));
       }
 
-      return results;
+      // Fetch all inserted records in one query
+      if (allIds.length === 0) return [];
+
+      const qb = this.getQueryBuilder();
+      await this.buildSelect(qb);
+      qb.whereIn(`${TABLE_DATA}.id`, allIds);
+      
+      return this.executeQuery<Record[]>(qb);
     };
 
     if (trx) {
@@ -235,18 +253,52 @@ export class CrudOperations implements ICrudOperations {
   }
 
   async bulkUpdate(data: Record[], options: BulkOptions = {}): Promise<Record[]> {
-    const { cookie, trx } = options;
-    const results: Record[] = [];
+    const { cookie, trx, chunkSize = 100 } = options;
 
-    for (const item of data) {
-      const id = item.id || item.Id;
-      if (!id) continue;
+    const executeUpdates = async (transaction?: Knex.Transaction): Promise<Record[]> => {
+      const updatedIds: string[] = [];
+      const chunks = this.chunk(data, chunkSize);
 
-      const updated = await this.updateByPk(id as string, item, trx, cookie);
-      results.push(updated);
+      for (const batch of chunks) {
+        // Process each item in the batch
+        await Promise.all(
+          batch.map(async (item) => {
+            const id = (item.id || item.Id) as string;
+            if (!id) return;
+
+            const existing = await this.readByPk(id);
+            if (!existing) return;
+
+            const sanitized = sanitize(item) as Record;
+            const merged = { ...existing, ...sanitized };
+            const mapped = this.mapDataForUpdate(merged, cookie);
+
+            const qb = this.ctx.db(TABLE_DATA);
+            if (transaction) qb.transacting(transaction);
+            qb.where('id', id);
+            qb.where('table_id', this.ctx.table.id);
+            await qb.update(mapped);
+
+            updatedIds.push(id);
+          })
+        );
+      }
+
+      // Fetch all updated records in one query
+      if (updatedIds.length === 0) return [];
+
+      const qb = this.getQueryBuilder();
+      await this.buildSelect(qb);
+      qb.whereIn(`${TABLE_DATA}.id`, updatedIds);
+
+      return this.executeQuery<Record[]>(qb);
+    };
+
+    if (trx) {
+      return executeUpdates(trx);
     }
 
-    return results;
+    return this.ctx.db.transaction((tx) => executeUpdates(tx));
   }
 
   async bulkUpdateAll(
@@ -267,7 +319,7 @@ export class CrudOperations implements ICrudOperations {
     const qb = this.ctx.db(TABLE_DATA);
     if (trx) qb.transacting(trx);
     qb.whereIn('id', ids);
-    qb.where('fk_table_id', this.ctx.table.id);
+    qb.where('table_id', this.ctx.table.id);
 
     await qb.update(mapped);
 
@@ -282,7 +334,7 @@ export class CrudOperations implements ICrudOperations {
     const qb = this.ctx.db(TABLE_DATA);
     if (trx) qb.transacting(trx);
     qb.whereIn('id', ids);
-    qb.where('fk_table_id', this.ctx.table.id);
+    qb.where('table_id', this.ctx.table.id);
 
     return qb.delete();
   }
@@ -299,17 +351,18 @@ export class CrudOperations implements ICrudOperations {
   // ==========================================================================
 
   async groupBy(args: GroupByArgs): Promise<Record[]> {
-    const { column_name, aggregation = 'count' } = args;
+    const { columnId, aggregation = 'count' } = args;
     const column = getColumnsWithPk(this.ctx.table).find(
-      (c) => c.column_name === column_name || c.title === column_name
+      (c) => c.id === columnId || getColumnName(c) === columnId || c.title === columnId
     );
 
     if (!column) return [];
 
     const sqlCol = getColumnExpression(column, this.ctx.table, this.ctx.alias);
+    const displayName = column.title || getColumnName(column);
     const qb = this.getQueryBuilder();
 
-    qb.select(this.ctx.db.raw(`${sqlCol} as "${column_name}"`));
+    qb.select(this.ctx.db.raw(`${sqlCol} as "${displayName}"`));
 
     switch (aggregation.toLowerCase()) {
       case 'count': qb.count('* as count'); break;
@@ -365,36 +418,20 @@ export class CrudOperations implements ICrudOperations {
 
   protected async executeQuery<T = Record[]>(qb: Knex.QueryBuilder): Promise<T> {
     try {
+      // Apply timeout if configured
+      if (this.ctx.config.queryTimeout > 0) {
+        qb.timeout(this.ctx.config.queryTimeout, { cancel: true });
+      }
+      
       const result = await qb;
       if (Array.isArray(result)) {
-        return result.map((row) => this.parseRow(row)) as T;
+        return result.map((row) => parseRow(row)) as T;
       }
       return result as T;
     } catch (error) {
-      console.error('Query execution error:', error);
+      this.ctx.config.logger.error('Query execution error:', error);
       throw error;
     }
-  }
-
-  protected parseRow(row: Record): Record {
-    if (!row) return row;
-
-    if (typeof row.data === 'string') {
-      try {
-        const data = JSON.parse(row.data);
-        const { data: _, ...systemFields } = row;
-        return { ...systemFields, ...data };
-      } catch {
-        return row;
-      }
-    }
-
-    if (row.data && typeof row.data === 'object') {
-      const { data, ...systemFields } = row;
-      return { ...systemFields, ...(data as object) };
-    }
-
-    return row;
   }
 
   protected populatePk(data: Record): void {
@@ -409,7 +446,7 @@ export class CrudOperations implements ICrudOperations {
 
     return {
       id: (system.id as string) || ulid(),
-      fk_table_id: this.ctx.table.id,
+      table_id: this.ctx.table.id,
       created_at: (system.created_at as string) || now,
       updated_at: (system.updated_at as string) || now,
       created_by: (system.created_by as string | null) ?? reqCtx?.user?.id ?? null,
@@ -438,7 +475,7 @@ export class CrudOperations implements ICrudOperations {
 
     for (const [key, value] of Object.entries(data)) {
       const column = columns.find(
-        (c) => c.id === key || c.title === key || c.column_name === key
+        (c) => c.id === key || c.title === key || getColumnName(c) === key
       );
 
       if (!column) {
@@ -461,7 +498,8 @@ export class CrudOperations implements ICrudOperations {
           system.updated_by = value as string | null;
         }
       } else {
-        userData[column.column_name] = this.convertValue(column, value);
+        const colName = getColumnName(column);
+        userData[colName] = this.convertValue(column, value);
       }
     }
 

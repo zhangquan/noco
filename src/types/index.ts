@@ -11,6 +11,7 @@ export {
   VIRTUAL_COLUMN_TYPES,
   SYSTEM_COLUMN_NAMES,
   DEFAULT_ID_COLUMN,
+  getColumnName,
 } from './column';
 
 export type {
@@ -27,7 +28,7 @@ export type {
 
 // Table types
 export { ViewTypes } from './table';
-export type { Table, View, ViewLockType } from './table';
+export type { Table, View, ViewLockType, LegacyTable } from './table';
 
 // Filter and sort types
 export type {

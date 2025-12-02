@@ -5,8 +5,8 @@
 
 import type { Knex } from 'knex';
 import type { Column, Table } from '../types';
-import { UITypes } from '../types';
-import { TABLE_DATA, TABLE_RELATIONS, ModelConfig, DEFAULT_MODEL_CONFIG } from '../config';
+import { UITypes, getColumnName } from '../types';
+import { TABLE_DATA, TABLE_LINKS, ModelConfig, DEFAULT_MODEL_CONFIG } from '../config';
 import {
   isSystemColumn,
   isVirtualColumn,
@@ -23,7 +23,7 @@ import {
  * Get SQL table name for a table
  */
 export function getTableName(table: Table, alias?: string): string {
-  return table.mm ? (alias || TABLE_RELATIONS) : (alias || TABLE_DATA);
+  return table.mm ? (alias || TABLE_LINKS) : (alias || TABLE_DATA);
 }
 
 /**
@@ -44,7 +44,9 @@ export function getTableWithAlias(table: Table, alias: string): Record<string, s
 export function sanitizeColumnName(name: string): string {
   // Only allow alphanumeric, underscore, and dash
   if (!/^[a-zA-Z_][a-zA-Z0-9_-]*$/.test(name)) {
-    throw new Error(`Invalid column name: ${name}`);
+    // eslint-disable-next-line @typescript-eslint/no-var-requires
+    const { ModelError } = require('../core/NcError');
+    throw new ModelError(`Invalid column name: ${name}`, 'BAD_REQUEST', { columnName: name });
   }
   return name;
 }
@@ -55,7 +57,9 @@ export function sanitizeColumnName(name: string): string {
 export function sanitizeIdentifier(identifier: string): string {
   // Only allow alphanumeric and underscore
   if (!/^[a-zA-Z_][a-zA-Z0-9_]*$/.test(identifier)) {
-    throw new Error(`Invalid SQL identifier: ${identifier}`);
+    // eslint-disable-next-line @typescript-eslint/no-var-requires
+    const { ModelError } = require('../core/NcError');
+    throw new ModelError(`Invalid SQL identifier: ${identifier}`, 'BAD_REQUEST', { identifier });
   }
   return identifier;
 }
@@ -69,11 +73,12 @@ export function getColumnExpression(
   alias?: string
 ): string {
   const prefix = alias || getTableName(table);
-  const safeColumnName = sanitizeColumnName(column.column_name);
+  const colName = getColumnName(column);
+  const safeColumnName = sanitizeColumnName(colName);
 
   // System columns or relation table: direct access
   if (isSystemColumn(column) || table.mm) {
-    const sysName = getSystemColumnName(column.uidt);
+    const sysName = getSystemColumnName(column.uidt as UITypes);
     const columnName = sysName || safeColumnName;
     return `${prefix}."${columnName}"`;
   }
@@ -145,7 +150,7 @@ export function createQueryBuilder(
 
   // Filter by table_id for data isolation
   const tableAlias = alias || tableName;
-  query.where(`${tableAlias}.fk_table_id`, table.id);
+  query.where(`${tableAlias}.table_id`, table.id);
 
   return query;
 }

@@ -7,11 +7,12 @@ import type { Knex } from 'knex';
 import type { IModelContext, ModelContext } from '../ModelContext';
 import type { Column, Table, ListArgs, Record } from '../../types';
 import { UITypes } from '../../types';
-import { TABLE_DATA, TABLE_RELATIONS } from '../../config';
+import { TABLE_DATA, TABLE_LINKS } from '../../config';
 import {
   getColumnsWithPk,
   getTableByIdOrThrow,
 } from '../../utils/columnUtils';
+import { parseRow } from '../../utils/rowParser';
 import { getChildTableIdFromMM } from '../../query/sqlBuilder';
 import type { CrudOperations } from './CrudOperations';
 import type { LinkOperations } from './LinkOperations';
@@ -119,15 +120,15 @@ export class LazyOperations implements ILazyOperations {
       const childTable = getTableByIdOrThrow(this.ctx.tables, childTableId!);
 
       // Batch query all relations for the parent IDs
-      const relations = await this.ctx.db(TABLE_RELATIONS)
-        .select('fk_parent_id', 'fk_child_id')
-        .where('fk_mm_parent_column_id', column.id)
-        .whereIn('fk_parent_id', parentIds);
+      const relations = await this.ctx.db(TABLE_LINKS)
+        .select('source_record_id', 'target_record_id')
+        .where('link_field_id', column.id)
+        .whereIn('source_record_id', parentIds);
 
       if (relations.length === 0) return result;
 
       // Get unique child IDs
-      const childIds = [...new Set(relations.map((r) => r.fk_child_id))];
+      const childIds = [...new Set(relations.map((r) => r.target_record_id))];
 
       // Load all child records
       const childRecords = await this.loadChildRecords(childTable, childIds);
@@ -135,8 +136,8 @@ export class LazyOperations implements ILazyOperations {
 
       // Group by parent ID
       for (const relation of relations) {
-        const parentId = relation.fk_parent_id;
-        const childRecord = childMap.get(relation.fk_child_id);
+        const parentId = relation.source_record_id;
+        const childRecord = childMap.get(relation.target_record_id);
 
         if (childRecord) {
           if (!result.has(parentId)) {
@@ -146,7 +147,7 @@ export class LazyOperations implements ILazyOperations {
         }
       }
     } catch (error) {
-      console.warn(`Failed to load relations for column ${column.title}:`, error);
+      this.ctx.config.logger.warn(`Failed to load relations for column ${column.title}:`, error);
     }
 
     return result;
@@ -160,32 +161,11 @@ export class LazyOperations implements ILazyOperations {
 
     const qb = this.ctx.db(TABLE_DATA)
       .select('*')
-      .where('fk_table_id', childTable.id)
+      .where('table_id', childTable.id)
       .whereIn('id', childIds);
 
     const rows = await qb;
-    return rows.map((row) => this.parseRow(row));
-  }
-
-  protected parseRow(row: Record): Record {
-    if (!row) return row;
-
-    if (typeof row.data === 'string') {
-      try {
-        const data = JSON.parse(row.data);
-        const { data: _, ...systemFields } = row;
-        return { ...systemFields, ...data };
-      } catch {
-        return row;
-      }
-    }
-
-    if (row.data && typeof row.data === 'object') {
-      const { data, ...systemFields } = row;
-      return { ...systemFields, ...(data as object) };
-    }
-
-    return row;
+    return rows.map((row) => parseRow(row));
   }
 }
 

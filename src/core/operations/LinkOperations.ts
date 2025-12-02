@@ -9,11 +9,12 @@ import type { IModelContext } from '../ModelContext';
 import { NcError } from '../NcError';
 import type { Column, Table, ListArgs, Record } from '../../types';
 import { UITypes } from '../../types';
-import { TABLE_DATA, TABLE_RELATIONS } from '../../config';
+import { TABLE_DATA, TABLE_LINKS } from '../../config';
 import {
   getColumnsWithPk,
   getTableByIdOrThrow,
 } from '../../utils/columnUtils';
+import { parseRow } from '../../utils/rowParser';
 import {
   createQueryBuilder,
   buildSelectExpressions,
@@ -67,15 +68,15 @@ export class LinkOperations implements ILinkOperations {
     const selects = buildSelectExpressions(columns, childTable, alias, this.ctx.db);
     qb.select(selects);
 
-    // Join with relations table
-    qb.innerJoin(TABLE_RELATIONS + ' as rel', (join) => {
-      join.on('rel.fk_child_id', '=', `${alias}.id`);
-      join.andOnVal('rel.fk_mm_parent_column_id', column.id);
+    // Join with links table
+    qb.innerJoin(TABLE_LINKS + ' as rel', (join) => {
+      join.on('rel.target_record_id', '=', `${alias}.id`);
+      join.andOnVal('rel.link_field_id', column.id);
     });
 
     // Filter by parent
     if (args.parentId) {
-      qb.where('rel.fk_parent_id', args.parentId);
+      qb.where('rel.source_record_id', args.parentId);
     }
 
     applyPagination(qb, args.limit, args.offset, this.ctx.config);
@@ -92,13 +93,13 @@ export class LinkOperations implements ILinkOperations {
 
     qb.count('* as count');
 
-    qb.innerJoin(TABLE_RELATIONS + ' as rel', (join) => {
-      join.on('rel.fk_child_id', '=', `${alias}.id`);
-      join.andOnVal('rel.fk_mm_parent_column_id', column.id);
+    qb.innerJoin(TABLE_LINKS + ' as rel', (join) => {
+      join.on('rel.target_record_id', '=', `${alias}.id`);
+      join.andOnVal('rel.link_field_id', column.id);
     });
 
     if (args.parentId) {
-      qb.where('rel.fk_parent_id', args.parentId);
+      qb.where('rel.source_record_id', args.parentId);
     }
 
     const result = await qb;
@@ -117,10 +118,10 @@ export class LinkOperations implements ILinkOperations {
     qb.select(selects);
 
     // Exclude already linked children
-    const linkedSubquery = this.ctx.db(TABLE_RELATIONS)
-      .select('fk_child_id')
-      .where('fk_mm_parent_column_id', column.id)
-      .andWhere('fk_parent_id', args.parentId || '');
+    const linkedSubquery = this.ctx.db(TABLE_LINKS)
+      .select('target_record_id')
+      .where('link_field_id', column.id)
+      .andWhere('source_record_id', args.parentId || '');
 
     qb.whereNotIn(`${alias}.id`, linkedSubquery);
 
@@ -138,10 +139,10 @@ export class LinkOperations implements ILinkOperations {
 
     qb.count('* as count');
 
-    const linkedSubquery = this.ctx.db(TABLE_RELATIONS)
-      .select('fk_child_id')
-      .where('fk_mm_parent_column_id', column.id)
-      .andWhere('fk_parent_id', args.parentId || '');
+    const linkedSubquery = this.ctx.db(TABLE_LINKS)
+      .select('target_record_id')
+      .where('link_field_id', column.id)
+      .andWhere('source_record_id', args.parentId || '');
 
     qb.whereNotIn(`${alias}.id`, linkedSubquery);
 
@@ -166,13 +167,13 @@ export class LinkOperations implements ILinkOperations {
 
     const records = childIds.map((childId) => ({
       id: ulid(),
-      fk_parent_id: parentId,
-      fk_child_id: childId,
-      fk_mm_parent_column_id: column.id,
-      fk_mm_child_column_id: symmetricColumnId,
+      source_record_id: parentId,
+      target_record_id: childId,
+      link_field_id: column.id,
+      inverse_field_id: symmetricColumnId,
     }));
 
-    const qb = this.ctx.db(TABLE_RELATIONS);
+    const qb = this.ctx.db(TABLE_LINKS);
     if (trx) qb.transacting(trx);
 
     await qb.insert(records).onConflict().ignore();
@@ -186,12 +187,12 @@ export class LinkOperations implements ILinkOperations {
   ): Promise<void> {
     if (childIds.length === 0) return;
 
-    const qb = this.ctx.db(TABLE_RELATIONS);
+    const qb = this.ctx.db(TABLE_LINKS);
     if (trx) qb.transacting(trx);
 
-    qb.where('fk_parent_id', parentId);
-    qb.where('fk_mm_parent_column_id', column.id);
-    qb.whereIn('fk_child_id', childIds);
+    qb.where('source_record_id', parentId);
+    qb.where('link_field_id', column.id);
+    qb.whereIn('target_record_id', childIds);
 
     await qb.delete();
   }
@@ -229,36 +230,20 @@ export class LinkOperations implements ILinkOperations {
 
   protected async executeQuery<T = Record[]>(qb: Knex.QueryBuilder): Promise<T> {
     try {
+      // Apply timeout if configured
+      if (this.ctx.config.queryTimeout > 0) {
+        qb.timeout(this.ctx.config.queryTimeout, { cancel: true });
+      }
+
       const result = await qb;
       if (Array.isArray(result)) {
-        return result.map((row) => this.parseRow(row)) as T;
+        return result.map((row) => parseRow(row)) as T;
       }
       return result as T;
     } catch (error) {
-      console.error('Query execution error:', error);
+      this.ctx.config.logger.error('Query execution error:', error);
       throw error;
     }
-  }
-
-  protected parseRow(row: Record): Record {
-    if (!row) return row;
-
-    if (typeof row.data === 'string') {
-      try {
-        const data = JSON.parse(row.data);
-        const { data: _, ...systemFields } = row;
-        return { ...systemFields, ...data };
-      } catch {
-        return row;
-      }
-    }
-
-    if (row.data && typeof row.data === 'object') {
-      const { data, ...systemFields } = row;
-      return { ...systemFields, ...(data as object) };
-    }
-
-    return row;
   }
 }
 

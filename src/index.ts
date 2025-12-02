@@ -175,7 +175,7 @@ export async function initDatabase(db: Knex): Promise<void> {
  * @param db - Knex database instance
  */
 export async function dropDatabase(db: Knex): Promise<void> {
-  await db.schema.dropTableIfExists(TABLE_RELATIONS);
+  await db.schema.dropTableIfExists(TABLE_LINKS);
   await db.schema.dropTableIfExists(TABLE_DATA);
 }
 
@@ -214,11 +214,15 @@ export { UITypes } from './types';
 // Config
 export {
   TABLE_DATA,
-  TABLE_RELATIONS,
+  TABLE_LINKS,
+  TABLE_RELATIONS,  // deprecated alias
   PAGINATION,
   BULK_OPERATIONS,
   type ModelConfig,
+  type Logger,
   DEFAULT_MODEL_CONFIG,
+  consoleLogger,
+  silentLogger,
 } from './config';
 
 // Core - Error handling
@@ -279,3 +283,4 @@ export {
   getColumnsWithPk,
   parseFields,
 } from './utils/columnUtils';
+export { parseRow, parseRows } from './utils/rowParser';
