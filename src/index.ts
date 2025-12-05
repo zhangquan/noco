@@ -317,3 +317,46 @@ export {
   parseFields,
 } from './utils/columnUtils';
 export { parseRow, parseRows } from './utils/rowParser';
+
+// ============================================================================
+// REST API
+// ============================================================================
+
+// REST API module - provides Express-based RESTful APIs
+export {
+  // Router factories
+  createDataRouter,
+  createRestApi,
+  registerDataApis,
+  // Types
+  type AgentRequest,
+  type PagedResponse,
+  type BulkOperationResponse,
+  type RestApiConfig,
+  type CreateDataRouterOptions,
+  type CreateRestApiOptions,
+  type AsyncHandler,
+  // Middleware
+  asyncHandler,
+  errorHandler,
+  ncMetaAclMw,
+  createDbContextMiddleware,
+  createUserContextMiddleware,
+  apiMetrics,
+  rateLimiter,
+  corsMiddleware,
+  // Helpers
+  getTableFromRequest,
+  createModelFromRequest,
+  parseListArgs,
+  createPagedResponse,
+  sendSuccess,
+  sendError,
+  catchError,
+  // Route handlers
+  addDataAliasRoutes,
+  addBulkDataAliasRoutes,
+  addNestedDataAliasRoutes,
+  addExportDataAliasRoutes,
+  addPublicDataAliasRoutes,
+} from './rest-api';
