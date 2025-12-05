@@ -92,7 +92,7 @@ export async function tableList(
     const tables = schemaManager.getTables();
 
     res.json({
-      list: tables.map(t => ({
+      list: tables.map((t: any) => ({
         id: t.id,
         title: t.title,
         description: t.description,

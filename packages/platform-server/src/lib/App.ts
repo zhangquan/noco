@@ -8,7 +8,6 @@ import http from 'http';
 import passport from 'passport';
 import cors from 'cors';
 import helmet from 'helmet';
-import morgan from 'morgan';
 import cookieParser from 'cookie-parser';
 import type { Knex } from 'knex';
 import knex from 'knex';
@@ -27,6 +26,18 @@ import {
   createUserRouter,
 } from '../meta/api/index.js';
 import { runMigrations } from './migrations.js';
+import {
+  requestIdMiddleware,
+  requestLoggingMiddleware,
+  errorLoggingMiddleware,
+  createErrorHandler,
+  notFoundHandler,
+  createHealthRouter,
+  createRateLimitFromPreset,
+  initLogger,
+  type LoggerConfig,
+  type ErrorHandlerOptions,
+} from '../middleware/index.js';
 
 // ============================================================================
 // Types
@@ -47,6 +58,12 @@ export interface AppConfig {
   enableHelmet?: boolean;
   skipMigrations?: boolean;
   apiBasePath?: string;
+  /** Logger configuration */
+  logging?: LoggerConfig;
+  /** Error handler options */
+  errorHandler?: ErrorHandlerOptions;
+  /** Trust proxy setting for rate limiting */
+  trustProxy?: boolean | number | string;
 }
 
 // ============================================================================
@@ -161,20 +178,52 @@ export class App {
   private configureMiddleware(): void {
     console.log('⚙️ Configuring middleware...');
 
+    // Trust proxy for accurate IP detection
+    if (this.config.trustProxy !== undefined) {
+      this.app.set('trust proxy', this.config.trustProxy);
+    }
+
+    // Request ID and structured logging
+    this.app.use(requestIdMiddleware());
+
+    // Initialize logger
+    if (this.config.logging) {
+      initLogger(this.config.logging);
+    }
+
+    // Body parsing
     this.app.use(express.json({ limit: '50mb' }));
     this.app.use(express.urlencoded({ extended: true, limit: '50mb' }));
     this.app.use(cookieParser());
 
+    // Security headers
     if (this.config.enableHelmet !== false) {
-      this.app.use(helmet({ contentSecurityPolicy: false, crossOriginEmbedderPolicy: false }));
+      this.app.use(helmet({ 
+        contentSecurityPolicy: false, 
+        crossOriginEmbedderPolicy: false,
+        crossOriginResourcePolicy: { policy: 'cross-origin' },
+      }));
     }
 
+    // CORS
     if (this.config.enableCors !== false) {
-      this.app.use(cors({ origin: this.config.corsOrigin || true, credentials: true }));
+      this.app.use(cors({ 
+        origin: this.config.corsOrigin || true, 
+        credentials: true,
+        methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
+        allowedHeaders: ['Content-Type', 'Authorization', 'X-Request-Id', 'X-Api-Key'],
+        exposedHeaders: ['X-Request-Id', 'X-RateLimit-Limit', 'X-RateLimit-Remaining', 'X-RateLimit-Reset'],
+      }));
     }
 
+    // Request logging
     if (this.config.enableLogging !== false) {
-      this.app.use(morgan('combined'));
+      this.app.use(requestLoggingMiddleware(this.config.logging));
+    }
+
+    // Global rate limiting
+    if (this.config.enableRateLimit) {
+      this.app.use(createRateLimitFromPreset('api'));
     }
 
     console.log('✅ Middleware configured');
@@ -185,31 +234,71 @@ export class App {
 
     const basePath = this.config.apiBasePath || '/api/v1/db';
 
-    this.app.get('/health', (req, res) => {
-      res.json({ status: 'ok', timestamp: new Date().toISOString() });
-    });
+    // Health check routes with comprehensive checks
+    const healthRouter = createHealthRouter(
+      () => this.metaDb,
+      { version: '0.98.3' }
+    );
+    this.app.use('/health', healthRouter);
 
-    this.app.use(`${basePath}/auth`, createAuthRouter());
+    // Auth routes with strict rate limiting
+    const authRateLimiter = createRateLimitFromPreset('auth');
+    this.app.use(`${basePath}/auth`, authRateLimiter, createAuthRouter());
 
     const authMiddleware = requireAuth(passport);
     const optionalAuthMiddleware = optionalAuth(passport);
 
+    // User routes
     this.app.use(`${basePath}/users`, authMiddleware, createUserRouter());
+
+    // Project routes
     this.app.use(`${basePath}/meta/projects`, authMiddleware, createProjectRouter());
+    
+    // Table routes
     this.app.use(`${basePath}/meta/projects/:projectId/tables`, authMiddleware, createTableRouter());
+    
+    // App routes
     this.app.use(`${basePath}/meta/projects/:projectId/apps`, authMiddleware, createAppRouter());
+    
+    // Page routes
     this.app.use(`${basePath}/meta/apps/:appId/pages`, authMiddleware, createPageRouter());
+    
+    // Flow routes
     this.app.use(`${basePath}/meta/projects/:projectId/flows`, authMiddleware, createFlowAppRouter());
 
-    // Data API routes
+    // Data API routes with caching of SchemaManager
     const dataDb = this.dataDb!;
-    this.app.use(`${basePath}/data/:projectId`, optionalAuthMiddleware, async (req: Request, res: Response, next: NextFunction) => {
+    const schemaManagerCache = new Map<string, { manager: ReturnType<typeof createPersistentSchemaManager>; lastAccess: number }>();
+    
+    // Clean up cache periodically
+    setInterval(() => {
+      const now = Date.now();
+      for (const [key, entry] of schemaManagerCache.entries()) {
+        if (now - entry.lastAccess > 5 * 60 * 1000) { // 5 minutes idle
+          schemaManagerCache.delete(key);
+        }
+      }
+    }, 60000);
+
+    const dataRateLimiter = createRateLimitFromPreset('data');
+    
+    this.app.use(`${basePath}/data/:projectId`, optionalAuthMiddleware, dataRateLimiter, async (req: Request, res: Response, next: NextFunction) => {
       try {
         const { projectId } = req.params;
-        const schemaManager = createPersistentSchemaManager({ db: dataDb, namespace: `project:${projectId}` });
-        try { await schemaManager.load(); } catch { /* No schema yet */ }
+        const cacheKey = `project:${projectId}`;
+        
+        // Get or create SchemaManager with caching
+        let cached = schemaManagerCache.get(cacheKey);
+        if (!cached) {
+          const manager = createPersistentSchemaManager({ db: dataDb, namespace: cacheKey });
+          try { await manager.load(); } catch { /* No schema yet */ }
+          cached = { manager, lastAccess: Date.now() };
+          schemaManagerCache.set(cacheKey, cached);
+        } else {
+          cached.lastAccess = Date.now();
+        }
 
-        const tables = schemaManager.getTables();
+        const tables = cached.manager.getTables();
         const dataRouter = createRestApi({
           db: dataDb,
           tables,
@@ -227,20 +316,20 @@ export class App {
   }
 
   private configureErrorHandlers(): void {
-    this.app.use((req: Request, res: Response) => {
-      res.status(404).json({ error: 'Not Found', message: `Route ${req.method} ${req.path} not found` });
-    });
+    // Error logging middleware
+    if (this.config.enableLogging !== false) {
+      this.app.use(errorLoggingMiddleware(this.config.logging));
+    }
 
-    this.app.use((err: Error, req: Request, res: Response, _next: NextFunction) => {
-      console.error('Error:', err);
-      const statusCode = (err as any).statusCode || 500;
-      const message = process.env.NODE_ENV === 'production' ? 'Internal Server Error' : err.message;
-      res.status(statusCode).json({
-        error: err.name || 'Error',
-        message,
-        ...(process.env.NODE_ENV !== 'production' && { stack: err.stack }),
-      });
-    });
+    // 404 handler
+    this.app.use(notFoundHandler());
+
+    // Global error handler
+    this.app.use(createErrorHandler({
+      includeStack: process.env.NODE_ENV !== 'production',
+      logErrors: true,
+      ...this.config.errorHandler,
+    }));
   }
 
   async listen(port: number = 8080): Promise<http.Server> {

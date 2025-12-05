@@ -289,4 +289,26 @@ export const getCache = NocoCache.getInstance;
 export const initCache = NocoCache.init;
 
 export { NocoCache, MemoryCacheStore, RedisCacheStore };
+
+// Cache helpers
+export {
+  buildCacheKey,
+  parseCacheKey,
+  cacheAside,
+  cacheAsideList,
+  writeThrough,
+  WriteBehindCache,
+  invalidateCache,
+  invalidateListCache,
+  invalidateScopeCache,
+  invalidateRelated,
+  warmCache,
+  cacheStats,
+  cacheAsideWithStats,
+  type CacheOptions,
+  type CacheKeyParts,
+  type WarmCacheOptions,
+  type CacheStats,
+} from './helpers.js';
+
 export default NocoCache;
