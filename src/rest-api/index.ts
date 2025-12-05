@@ -10,14 +10,14 @@
  * ```typescript
  * import express from 'express';
  * import knex from 'knex';
- * import { createDataRouter, createDbContextMiddleware } from 'agentdb/rest-api';
+ * import { registerDataRouter, createDbContextMiddleware } from 'agentdb/rest-api';
  * 
  * const app = express();
  * const db = knex({ client: 'pg', connection: '...' });
  * const tables = [...]; // Your table definitions
  * 
- * // Create and mount the data router
- * const dataRouter = createDataRouter({
+ * // Register and mount the data router
+ * const dataRouter = registerDataRouter({
  *   enablePublicApis: true,
  *   enableExportApis: true,
  * });
@@ -126,9 +126,9 @@ import type { RestApiConfig, DEFAULT_REST_API_CONFIG } from './types';
 // ============================================================================
 
 /**
- * Options for creating the data router
+ * Options for registering the data router
  */
-export interface CreateDataRouterOptions {
+export interface DataRouterOptions {
   /** Enable public (shared view) APIs */
   enablePublicApis?: boolean;
   /** Enable export APIs (CSV/Excel) */
@@ -142,11 +142,16 @@ export interface CreateDataRouterOptions {
 }
 
 /**
- * Create an Express router with all data APIs configured
+ * @deprecated Use DataRouterOptions instead
+ */
+export type CreateDataRouterOptions = DataRouterOptions;
+
+/**
+ * Register an Express router with all data APIs configured
  * 
  * @example
  * ```typescript
- * const router = createDataRouter({
+ * const router = registerDataRouter({
  *   enablePublicApis: true,
  *   enableExportApis: true,
  *   enableCors: true,
@@ -155,7 +160,7 @@ export interface CreateDataRouterOptions {
  * app.use('/api/v1/db/data', router);
  * ```
  */
-export function createDataRouter(options: CreateDataRouterOptions = {}): Router {
+export function registerDataRouter(options: DataRouterOptions = {}): Router {
   const {
     enablePublicApis = true,
     enableExportApis = true,
@@ -190,9 +195,9 @@ export function createDataRouter(options: CreateDataRouterOptions = {}): Router 
 // ============================================================================
 
 /**
- * Options for creating the complete REST API app
+ * Options for registering the complete REST API
  */
-export interface CreateRestApiOptions extends CreateDataRouterOptions {
+export interface RestApiOptions extends DataRouterOptions {
   /** Knex database instance */
   db: Knex;
   /** Table definitions */
@@ -204,17 +209,22 @@ export interface CreateRestApiOptions extends CreateDataRouterOptions {
 }
 
 /**
- * Create a complete Express router with database context and all APIs
+ * @deprecated Use RestApiOptions instead
+ */
+export type CreateRestApiOptions = RestApiOptions;
+
+/**
+ * Register a complete Express router with database context and all APIs
  * 
  * @example
  * ```typescript
  * import express from 'express';
- * import { createRestApi } from 'agentdb/rest-api';
+ * import { registerRestApi } from 'agentdb/rest-api';
  * 
  * const app = express();
  * app.use(express.json());
  * 
- * const apiRouter = createRestApi({
+ * const apiRouter = registerRestApi({
  *   db: knex,
  *   tables: myTables,
  *   basePath: '/api/v1/db/data',
@@ -226,7 +236,7 @@ export interface CreateRestApiOptions extends CreateDataRouterOptions {
  * app.listen(3000);
  * ```
  */
-export function createRestApi(options: CreateRestApiOptions): Router {
+export function registerRestApi(options: RestApiOptions): Router {
   const {
     db,
     tables,
@@ -246,19 +256,32 @@ export function createRestApi(options: CreateRestApiOptions): Router {
     router.use(createUserContextMiddleware(extractUser));
   }
 
-  // Create and mount the data router
-  const dataRouter = createDataRouter(routerOptions);
+  // Register the data router
+  const dataRouter = registerDataRouter(routerOptions);
   router.use(basePath, dataRouter);
 
   return router;
 }
+
+/**
+ * @deprecated Use registerRestApi instead
+ */
+export const createRestApi = registerRestApi;
+
+/**
+ * @deprecated Use registerDataRouter instead
+ */
+export const createDataRouter = registerDataRouter;
 
 // ============================================================================
 // Default Export
 // ============================================================================
 
 export default {
+  registerDataRouter,
+  registerRestApi,
+  registerDataApis,
+  // Deprecated aliases
   createDataRouter,
   createRestApi,
-  registerDataApis,
 };

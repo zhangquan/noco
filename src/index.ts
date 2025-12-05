@@ -324,17 +324,22 @@ export { parseRow, parseRows } from './utils/rowParser';
 
 // REST API module - provides Express-based RESTful APIs
 export {
-  // Router factories
+  // Router registration functions
+  registerDataRouter,
+  registerRestApi,
+  registerDataApis,
+  // Deprecated aliases (for backwards compatibility)
   createDataRouter,
   createRestApi,
-  registerDataApis,
   // Types
   type AgentRequest,
   type PagedResponse,
   type BulkOperationResponse,
   type RestApiConfig,
-  type CreateDataRouterOptions,
-  type CreateRestApiOptions,
+  type DataRouterOptions,
+  type RestApiOptions,
+  type CreateDataRouterOptions,  // deprecated
+  type CreateRestApiOptions,     // deprecated
   type AsyncHandler,
   // Middleware
   asyncHandler,

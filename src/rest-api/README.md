@@ -28,7 +28,7 @@ rest-api/
 ```typescript
 import express from 'express';
 import knex from 'knex';
-import { createRestApi } from 'agentdb';
+import { registerRestApi } from 'agentdb';
 
 const app = express();
 const db = knex({ client: 'pg', connection: '...' });
@@ -46,8 +46,8 @@ const tables = [
   // ... 更多表
 ];
 
-// 创建完整的 REST API
-const apiRouter = createRestApi({
+// 注册完整的 REST API
+const apiRouter = registerRestApi({
   db,
   tables,
   basePath: '/api/v1/db/data',
@@ -64,10 +64,10 @@ app.listen(3000);
 
 ```typescript
 import express from 'express';
-import { createDataRouter, createDbContextMiddleware } from 'agentdb';
+import { registerDataRouter, createDbContextMiddleware } from 'agentdb';
 
 const app = express();
-const router = createDataRouter({
+const router = registerDataRouter({
   enablePublicApis: true,
   enableExportApis: true,
   enableCors: true,
