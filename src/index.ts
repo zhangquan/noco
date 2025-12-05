@@ -7,7 +7,7 @@
 
 import type { Knex } from 'knex';
 import type { Table } from './types';
-import { TABLE_DATA, TABLE_LINKS } from './config';
+import { TABLE_DATA, TABLE_LINKS, TABLE_SCHEMA } from './config';
 
 // ============================================================================
 // Model Factory - Main Entry Point
@@ -168,6 +168,29 @@ export async function initDatabase(db: Knex): Promise<void> {
       t.unique(['source_record_id', 'target_record_id', 'link_field_id']);
     });
   }
+
+  // Schema storage table - stores table/column definitions as JSONB
+  const hasSchemaTable = await db.schema.hasTable(TABLE_SCHEMA);
+  if (!hasSchemaTable) {
+    await db.schema.createTable(TABLE_SCHEMA, (t) => {
+      t.string('id', 26).primary();                          // ULID primary key
+      t.string('namespace', 255).notNullable();              // Namespace for multi-tenant support
+      t.integer('version').notNullable();                    // Schema version number
+      t.jsonb('schema').notNullable().defaultTo('{}');       // Schema data as JSONB
+      t.timestamp('created_at').defaultTo(db.fn.now());
+      t.timestamp('updated_at').defaultTo(db.fn.now());
+      
+      // Indexes
+      t.index('namespace');
+      t.index(['namespace', 'version']);
+      
+      // Unique constraint on namespace + version
+      t.unique(['namespace', 'version']);
+    });
+
+    // GIN index for JSONB schema queries
+    await db.raw(`CREATE INDEX IF NOT EXISTS idx_${TABLE_SCHEMA}_schema ON ${TABLE_SCHEMA} USING GIN(schema)`);
+  }
 }
 
 /**
@@ -176,6 +199,7 @@ export async function initDatabase(db: Knex): Promise<void> {
  */
 export async function dropDatabase(db: Knex): Promise<void> {
   await db.schema.dropTableIfExists(TABLE_LINKS);
+  await db.schema.dropTableIfExists(TABLE_SCHEMA);
   await db.schema.dropTableIfExists(TABLE_DATA);
 }
 
@@ -237,6 +261,7 @@ export { parseSimpleFilter, parseSimpleSort } from './utils/filterParser';
 export {
   TABLE_DATA,
   TABLE_LINKS,
+  TABLE_SCHEMA,
   TABLE_RELATIONS,  // deprecated alias
   PAGINATION,
   BULK_OPERATIONS,
@@ -291,11 +316,21 @@ export { Model, type IModel, type ModelOptions } from './models/Model';
 export {
   SchemaManager,
   createSchemaManager,
+  createPersistentSchemaManager,
+  loadSchemaManager,
   type ISchemaManager,
   type ColumnDefinition,
   type TableDefinition,
   type LinkDefinition,
   type SchemaExport,
+  type SchemaManagerOptions,
+  // Schema Store for direct access
+  SchemaStore,
+  createSchemaStore,
+  type ISchemaStore,
+  type SchemaRecord,
+  type SchemaData,
+  type SchemaStoreOptions,
 } from './schema';
 
 // Query utilities
