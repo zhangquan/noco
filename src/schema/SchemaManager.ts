@@ -3,9 +3,11 @@
  * @module schema/SchemaManager
  */
 
+import type { Knex } from 'knex';
 import { ulid } from 'ulid';
 import type { Column, Table, ColumnConstraints } from '../types';
 import { UITypes, RelationTypes } from '../types';
+import { SchemaStore, type SchemaData, type SchemaStoreOptions } from './SchemaStore';
 
 // ============================================================================
 // Types
@@ -58,33 +60,53 @@ export interface SchemaExport {
   tables: Table[];
 }
 
+/**
+ * Schema manager options for persistence
+ */
+export interface SchemaManagerOptions {
+  /** Knex database instance for persistence */
+  db?: Knex;
+  /** Namespace for multi-tenant support */
+  namespace?: string;
+  /** Auto-save changes to database */
+  autoSave?: boolean;
+  /** Initial tables (for in-memory mode) */
+  initialTables?: Table[];
+  /** Schema metadata */
+  meta?: SchemaData['meta'];
+}
+
 // ============================================================================
 // Schema Manager Interface
 // ============================================================================
 
 export interface ISchemaManager {
   // Table operations
-  createTable(definition: TableDefinition): Table;
+  createTable(definition: TableDefinition): Table | Promise<Table>;
   getTable(tableId: string): Table | undefined;
-  updateTable(tableId: string, updates: Partial<TableDefinition>): Table;
-  dropTable(tableId: string): boolean;
+  updateTable(tableId: string, updates: Partial<TableDefinition>): Table | Promise<Table>;
+  dropTable(tableId: string): boolean | Promise<boolean>;
   
   // Column operations
-  addColumn(tableId: string, column: ColumnDefinition): Column;
+  addColumn(tableId: string, column: ColumnDefinition): Column | Promise<Column>;
   getColumn(tableId: string, columnId: string): Column | undefined;
-  updateColumn(tableId: string, columnId: string, updates: Partial<ColumnDefinition>): Column;
-  dropColumn(tableId: string, columnId: string): boolean;
+  updateColumn(tableId: string, columnId: string, updates: Partial<ColumnDefinition>): Column | Promise<Column>;
+  dropColumn(tableId: string, columnId: string): boolean | Promise<boolean>;
   
   // Relationship operations
-  createLink(definition: LinkDefinition): { sourceColumn: Column; targetColumn?: Column };
-  removeLink(tableId: string, linkColumnId: string): boolean;
+  createLink(definition: LinkDefinition): { sourceColumn: Column; targetColumn?: Column } | Promise<{ sourceColumn: Column; targetColumn?: Column }>;
+  removeLink(tableId: string, linkColumnId: string): boolean | Promise<boolean>;
   
   // Schema import/export
   exportSchema(): SchemaExport;
-  importSchema(schema: SchemaExport, options?: { merge?: boolean }): void;
+  importSchema(schema: SchemaExport, options?: { merge?: boolean }): void | Promise<void>;
   
   // Access
   getTables(): Table[];
+  
+  // Persistence (optional)
+  save?(): Promise<void>;
+  load?(): Promise<void>;
 }
 
 // ============================================================================
@@ -94,12 +116,25 @@ export interface ISchemaManager {
 /**
  * Schema Manager for programmatic schema management
  * 
+ * Supports two modes:
+ * 1. In-memory mode (no db provided) - schema stored only in memory
+ * 2. Persistent mode (db provided) - schema stored as JSON in PostgreSQL
+ * 
  * @example
  * ```typescript
+ * // In-memory mode
  * const schema = new SchemaManager();
  * 
+ * // Persistent mode
+ * const schema = new SchemaManager({
+ *   db: knex,
+ *   namespace: 'my_app',
+ *   autoSave: true,
+ * });
+ * await schema.load(); // Load existing schema from DB
+ * 
  * // Create tables
- * schema.createTable({
+ * await schema.createTable({
  *   title: 'Users',
  *   description: 'User accounts',
  *   columns: [
@@ -109,14 +144,14 @@ export interface ISchemaManager {
  * });
  * 
  * // Add column
- * schema.addColumn('users', {
+ * await schema.addColumn('users', {
  *   title: 'Age',
  *   uidt: 'Number',
  *   constraints: { min: 0, max: 150 }
  * });
  * 
  * // Create relationship
- * schema.createLink({
+ * await schema.createLink({
  *   sourceTableId: 'users',
  *   targetTableId: 'orders',
  *   linkColumnTitle: 'Orders',
@@ -125,16 +160,93 @@ export interface ISchemaManager {
  *   inverseLinkColumnTitle: 'Customer'
  * });
  * 
+ * // Manual save (if autoSave is false)
+ * await schema.save();
+ * 
  * // Get tables for model
  * const model = createModel({ db, tableId: 'users', tables: schema.getTables() });
  * ```
  */
 export class SchemaManager implements ISchemaManager {
   protected tables: Table[] = [];
+  protected store: SchemaStore | null = null;
+  protected autoSave: boolean = false;
+  protected meta?: SchemaData['meta'];
+  protected dirty: boolean = false;
 
-  constructor(initialTables?: Table[]) {
-    if (initialTables) {
-      this.tables = [...initialTables];
+  constructor(options?: SchemaManagerOptions | Table[]) {
+    // Support legacy constructor signature (array of tables)
+    if (Array.isArray(options)) {
+      this.tables = [...options];
+      return;
+    }
+
+    if (options) {
+      if (options.initialTables) {
+        this.tables = [...options.initialTables];
+      }
+      if (options.db) {
+        this.store = new SchemaStore({
+          db: options.db,
+          namespace: options.namespace,
+        });
+      }
+      this.autoSave = options.autoSave ?? false;
+      this.meta = options.meta;
+    }
+  }
+
+  // ==========================================================================
+  // Persistence Operations
+  // ==========================================================================
+
+  /**
+   * Save schema to database (only works in persistent mode)
+   */
+  async save(): Promise<void> {
+    if (!this.store) {
+      throw new Error('Cannot save: SchemaManager not configured with database');
+    }
+    await this.store.save(this.tables, this.meta);
+    this.dirty = false;
+  }
+
+  /**
+   * Load schema from database (only works in persistent mode)
+   */
+  async load(): Promise<void> {
+    if (!this.store) {
+      throw new Error('Cannot load: SchemaManager not configured with database');
+    }
+    const schema = await this.store.load();
+    if (schema) {
+      this.tables = schema.tables;
+      this.meta = schema.meta;
+    }
+    this.dirty = false;
+  }
+
+  /**
+   * Check if there are unsaved changes
+   */
+  isDirty(): boolean {
+    return this.dirty;
+  }
+
+  /**
+   * Get the schema store (for advanced operations)
+   */
+  getStore(): SchemaStore | null {
+    return this.store;
+  }
+
+  /**
+   * Auto-save if enabled
+   */
+  protected async autoSaveIfEnabled(): Promise<void> {
+    this.dirty = true;
+    if (this.autoSave && this.store) {
+      await this.save();
     }
   }
 
@@ -145,7 +257,7 @@ export class SchemaManager implements ISchemaManager {
   /**
    * Create a new table
    */
-  createTable(definition: TableDefinition): Table {
+  async createTable(definition: TableDefinition): Promise<Table> {
     const tableId = definition.id || this.generateId(definition.title);
     
     // Check for duplicate
@@ -168,6 +280,36 @@ export class SchemaManager implements ISchemaManager {
     };
 
     this.tables.push(table);
+    await this.autoSaveIfEnabled();
+    return table;
+  }
+
+  /**
+   * Create a new table (sync version for in-memory mode)
+   */
+  createTableSync(definition: TableDefinition): Table {
+    const tableId = definition.id || this.generateId(definition.title);
+    
+    if (this.tables.find((t) => t.id === tableId)) {
+      throw new Error(`Table with id '${tableId}' already exists`);
+    }
+
+    const columns: Column[] = (definition.columns || []).map((col) => 
+      this.normalizeColumn(col)
+    );
+
+    const table: Table = {
+      id: tableId,
+      title: definition.title,
+      name: tableId,
+      description: definition.description,
+      hints: definition.hints,
+      columns,
+      type: 'table',
+    };
+
+    this.tables.push(table);
+    this.dirty = true;
     return table;
   }
 
@@ -181,7 +323,7 @@ export class SchemaManager implements ISchemaManager {
   /**
    * Update a table
    */
-  updateTable(tableId: string, updates: Partial<TableDefinition>): Table {
+  async updateTable(tableId: string, updates: Partial<TableDefinition>): Promise<Table> {
     const table = this.getTable(tableId);
     if (!table) {
       throw new Error(`Table not found: ${tableId}`);
@@ -191,13 +333,14 @@ export class SchemaManager implements ISchemaManager {
     if (updates.description !== undefined) table.description = updates.description;
     if (updates.hints !== undefined) table.hints = updates.hints;
 
+    await this.autoSaveIfEnabled();
     return table;
   }
 
   /**
    * Drop a table
    */
-  dropTable(tableId: string): boolean {
+  async dropTable(tableId: string): Promise<boolean> {
     const index = this.tables.findIndex((t) => t.id === tableId);
     if (index === -1) return false;
 
@@ -215,6 +358,7 @@ export class SchemaManager implements ISchemaManager {
     }
 
     this.tables.splice(index, 1);
+    await this.autoSaveIfEnabled();
     return true;
   }
 
@@ -225,7 +369,7 @@ export class SchemaManager implements ISchemaManager {
   /**
    * Add a column to a table
    */
-  addColumn(tableId: string, column: ColumnDefinition): Column {
+  async addColumn(tableId: string, column: ColumnDefinition): Promise<Column> {
     const table = this.getTable(tableId);
     if (!table) {
       throw new Error(`Table not found: ${tableId}`);
@@ -243,6 +387,31 @@ export class SchemaManager implements ISchemaManager {
     }
 
     table.columns.push(normalizedColumn);
+    await this.autoSaveIfEnabled();
+    return normalizedColumn;
+  }
+
+  /**
+   * Add a column to a table (sync version for in-memory mode)
+   */
+  addColumnSync(tableId: string, column: ColumnDefinition): Column {
+    const table = this.getTable(tableId);
+    if (!table) {
+      throw new Error(`Table not found: ${tableId}`);
+    }
+
+    if (!table.columns) {
+      table.columns = [];
+    }
+
+    const normalizedColumn = this.normalizeColumn(column);
+
+    if (table.columns.find((c) => c.id === normalizedColumn.id)) {
+      throw new Error(`Column with id '${normalizedColumn.id}' already exists in table '${tableId}'`);
+    }
+
+    table.columns.push(normalizedColumn);
+    this.dirty = true;
     return normalizedColumn;
   }
 
@@ -258,7 +427,7 @@ export class SchemaManager implements ISchemaManager {
   /**
    * Update a column
    */
-  updateColumn(tableId: string, columnId: string, updates: Partial<ColumnDefinition>): Column {
+  async updateColumn(tableId: string, columnId: string, updates: Partial<ColumnDefinition>): Promise<Column> {
     const table = this.getTable(tableId);
     if (!table) {
       throw new Error(`Table not found: ${tableId}`);
@@ -277,13 +446,14 @@ export class SchemaManager implements ISchemaManager {
     if (updates.defaultValue !== undefined) column.defaultValue = updates.defaultValue;
     if (updates.options !== undefined) column.options = updates.options;
 
+    await this.autoSaveIfEnabled();
     return column;
   }
 
   /**
    * Drop a column
    */
-  dropColumn(tableId: string, columnId: string): boolean {
+  async dropColumn(tableId: string, columnId: string): Promise<boolean> {
     const table = this.getTable(tableId);
     if (!table || !table.columns) return false;
 
@@ -297,6 +467,7 @@ export class SchemaManager implements ISchemaManager {
     }
 
     table.columns.splice(index, 1);
+    await this.autoSaveIfEnabled();
     return true;
   }
 
@@ -307,7 +478,7 @@ export class SchemaManager implements ISchemaManager {
   /**
    * Create a link between two tables
    */
-  createLink(definition: LinkDefinition): { sourceColumn: Column; targetColumn?: Column } {
+  async createLink(definition: LinkDefinition): Promise<{ sourceColumn: Column; targetColumn?: Column }> {
     const sourceTable = this.getTable(definition.sourceTableId);
     const targetTable = this.getTable(definition.targetTableId);
 
@@ -363,13 +534,14 @@ export class SchemaManager implements ISchemaManager {
       (targetColumn.colOptions as Record<string, unknown>).fk_symmetric_column_id = sourceColumnId;
     }
 
+    await this.autoSaveIfEnabled();
     return { sourceColumn, targetColumn };
   }
 
   /**
    * Remove a link column
    */
-  removeLink(tableId: string, linkColumnId: string): boolean {
+  async removeLink(tableId: string, linkColumnId: string): Promise<boolean> {
     const column = this.getColumn(tableId, linkColumnId);
     if (!column) return false;
 
@@ -396,9 +568,16 @@ export class SchemaManager implements ISchemaManager {
   }
 
   /**
+   * Export schema to JSON string
+   */
+  toJSON(): string {
+    return JSON.stringify(this.exportSchema(), null, 2);
+  }
+
+  /**
    * Import schema from JSON format
    */
-  importSchema(schema: SchemaExport, options: { merge?: boolean } = {}): void {
+  async importSchema(schema: SchemaExport, options: { merge?: boolean } = {}): Promise<void> {
     if (options.merge) {
       // Merge with existing tables
       for (const table of schema.tables) {
@@ -415,6 +594,34 @@ export class SchemaManager implements ISchemaManager {
       // Replace all tables
       this.tables = [...schema.tables];
     }
+    await this.autoSaveIfEnabled();
+  }
+
+  /**
+   * Import schema from JSON string
+   */
+  async fromJSON(json: string): Promise<void> {
+    const schema = JSON.parse(json) as SchemaExport;
+    await this.importSchema(schema);
+  }
+
+  /**
+   * Import schema from JSON format (sync version)
+   */
+  importSchemaSync(schema: SchemaExport, options: { merge?: boolean } = {}): void {
+    if (options.merge) {
+      for (const table of schema.tables) {
+        const existing = this.getTable(table.id);
+        if (existing) {
+          Object.assign(existing, table);
+        } else {
+          this.tables.push(table);
+        }
+      }
+    } else {
+      this.tables = [...schema.tables];
+    }
+    this.dirty = true;
   }
 
   // ==========================================================================
@@ -484,8 +691,24 @@ export class SchemaManager implements ISchemaManager {
 }
 
 /**
- * Create a schema manager instance
+ * Create a schema manager instance (in-memory mode)
  */
 export function createSchemaManager(initialTables?: Table[]): SchemaManager {
   return new SchemaManager(initialTables);
+}
+
+/**
+ * Create a schema manager instance with persistence
+ */
+export function createPersistentSchemaManager(options: SchemaManagerOptions): SchemaManager {
+  return new SchemaManager(options);
+}
+
+/**
+ * Create a schema manager and load existing schema from database
+ */
+export async function loadSchemaManager(options: SchemaManagerOptions): Promise<SchemaManager> {
+  const manager = new SchemaManager(options);
+  await manager.load();
+  return manager;
 }

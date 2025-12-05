@@ -18,6 +18,11 @@ export const TABLE_DATA = 'jm_data';
 export const TABLE_LINKS = 'jm_record_links';
 
 /**
+ * Schema storage table for storing table/column definitions as JSONB
+ */
+export const TABLE_SCHEMA = 'jm_schema';
+
+/**
  * @deprecated Use TABLE_LINKS instead
  */
 export const TABLE_RELATIONS = TABLE_LINKS;
