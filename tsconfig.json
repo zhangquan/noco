@@ -1,7 +1,7 @@
 {
   "compilerOptions": {
     "target": "ES2022",
-    "module": "commonjs",
+    "module": "ESNext",
     "lib": ["ES2022"],
     "strict": true,
     "esModuleInterop": true,
@@ -15,6 +15,7 @@
     "composite": true
   },
   "references": [
-    { "path": "./packages/agentdb" }
+    { "path": "./packages/agentdb" },
+    { "path": "./packages/platform-server" }
   ]
 }
