@@ -324,39 +324,60 @@ export { parseRow, parseRows } from './utils/rowParser';
 
 // REST API module - provides Express-based RESTful APIs
 export {
-  // Router registration functions
-  registerDataRouter,
-  registerRestApi,
-  registerDataApis,
-  // Types
-  type AgentRequest,
-  type PagedResponse,
-  type BulkOperationResponse,
+  // Router factory functions
+  createDataRouter,
+  createRestApi,
+  registerDataRouter,  // alias for backwards compatibility
+  registerRestApi,     // alias for backwards compatibility
+  // Configuration
+  getConfig,
+  setConfig,
+  createConfig,
+  DEFAULT_CONFIG,
   type RestApiConfig,
-  type DataRouterOptions,
-  type RestApiOptions,
-  type AsyncHandler,
+  type RouterOptions,
+  type ApiOptions,
+  // Request/Response types
+  type ApiRequest,
+  type AuthUser,
+  type RequestContext as ApiRequestContext,
+  type PagedResponse,
+  type BulkResult,
+  type PageInfo,
   // Middleware
-  asyncHandler,
+  handler,
   errorHandler,
-  ncMetaAclMw,
-  createDbContextMiddleware,
-  createUserContextMiddleware,
-  apiMetrics,
-  rateLimiter,
-  corsMiddleware,
-  // Helpers
-  getTableFromRequest,
-  createModelFromRequest,
-  parseListArgs,
-  createPagedResponse,
-  sendSuccess,
-  sendError,
-  catchError,
-  // Route handlers
-  addDataAliasRoutes,
-  addBulkDataAliasRoutes,
-  addNestedDataAliasRoutes,
-  addExportDataAliasRoutes,
-  addPublicDataAliasRoutes,
+  authorize,
+  createContextMiddleware,
+  createUserMiddleware,
+  rateLimit,
+  cors,
+  requestLogger,
+  validateBody,
+  validateRowId,
+  requireTable,
+  requireAuth,
+  // Errors
+  ApiError,
+  BadRequestError,
+  NotFoundError,
+  UnauthorizedError,
+  ForbiddenError,
+  // Services
+  RecordService,
+  BulkService,
+  RelationService,
+  ExportService,
+  // Handlers
+  records,
+  bulk,
+  relations,
+  exportHandlers,
+  publicHandlers,
+  // Utils
+  parseListParams,
+  paginate,
+  ok,
+  created,
+  buildCsv,
 } from './rest-api';
