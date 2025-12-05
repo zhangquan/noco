@@ -141,10 +141,6 @@ export interface DataRouterOptions {
   enableErrorHandler?: boolean;
 }
 
-/**
- * @deprecated Use DataRouterOptions instead
- */
-export type CreateDataRouterOptions = DataRouterOptions;
 
 /**
  * Register an Express router with all data APIs configured
@@ -208,10 +204,6 @@ export interface RestApiOptions extends DataRouterOptions {
   extractUser?: (req: unknown) => Promise<{ id: string; email?: string; display_name?: string } | undefined>;
 }
 
-/**
- * @deprecated Use RestApiOptions instead
- */
-export type CreateRestApiOptions = RestApiOptions;
 
 /**
  * Register a complete Express router with database context and all APIs
@@ -263,15 +255,6 @@ export function registerRestApi(options: RestApiOptions): Router {
   return router;
 }
 
-/**
- * @deprecated Use registerRestApi instead
- */
-export const createRestApi = registerRestApi;
-
-/**
- * @deprecated Use registerDataRouter instead
- */
-export const createDataRouter = registerDataRouter;
 
 // ============================================================================
 // Default Export
@@ -281,7 +264,4 @@ export default {
   registerDataRouter,
   registerRestApi,
   registerDataApis,
-  // Deprecated aliases
-  createDataRouter,
-  createRestApi,
 };

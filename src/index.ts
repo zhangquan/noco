@@ -328,9 +328,6 @@ export {
   registerDataRouter,
   registerRestApi,
   registerDataApis,
-  // Deprecated aliases (for backwards compatibility)
-  createDataRouter,
-  createRestApi,
   // Types
   type AgentRequest,
   type PagedResponse,
@@ -338,8 +335,6 @@ export {
   type RestApiConfig,
   type DataRouterOptions,
   type RestApiOptions,
-  type CreateDataRouterOptions,  // deprecated
-  type CreateRestApiOptions,     // deprecated
   type AsyncHandler,
   // Middleware
   asyncHandler,
