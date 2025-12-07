@@ -5,7 +5,7 @@
 
 import { CacheScope, MetaTable } from '../types/index.js';
 import type { Project as ProjectType, ProjectUser, ProjectRole } from '../types/index.js';
-import { getNcMeta } from '../lib/NcMetaIO.js';
+import { getDb, generateId } from '../db/index.js';
 import { NocoCache } from '../cache/index.js';
 import {
   getById,
@@ -14,6 +14,7 @@ import {
   updateRecord,
   deleteRecord,
   invalidateListCache,
+  countRecords,
   type BaseModelOptions,
 } from './BaseModel.js';
 
@@ -72,12 +73,14 @@ export class Project {
     org_id?: string;
     meta?: Record<string, unknown>;
   }, options?: BaseModelOptions): Promise<Project> {
-    const ncMeta = options?.ncMeta || getNcMeta();
+    const db = options?.knex || getDb();
     const now = new Date();
 
     const prefix = data.prefix || data.title.toLowerCase().replace(/[^a-z0-9]+/g, '_').slice(0, 10);
+    const id = generateId();
 
     const projectData: Partial<ProjectType> = {
+      id,
       title: data.title,
       prefix,
       description: data.description,
@@ -90,7 +93,8 @@ export class Project {
       updated_at: now,
     };
 
-    const id = await ncMeta.metaInsert(null, null, META_TABLE, projectData as Record<string, unknown>);
+    await db(META_TABLE).insert(projectData);
+    
     const project = await this.get(id, { ...options, skipCache: true });
     if (!project) throw new Error('Failed to create project');
 
@@ -147,8 +151,8 @@ export class Project {
       if (cached) return cached.map(d => new Project(d));
     }
 
-    const ncMeta = options?.ncMeta || getNcMeta();
-    const results = await ncMeta.getKnex()
+    const db = options?.knex || getDb();
+    const results = await db
       .select('p.*')
       .from(`${META_TABLE} as p`)
       .join(`${MetaTable.PROJECT_USERS} as pu`, 'p.id', 'pu.project_id')
@@ -165,16 +169,17 @@ export class Project {
   }
 
   static async count(condition?: Record<string, unknown>): Promise<number> {
-    const ncMeta = getNcMeta();
-    return ncMeta.metaCount(null, null, META_TABLE, { deleted: false, ...condition });
+    return countRecords(META_TABLE, { deleted: false, ...condition });
   }
 
   // Project User Management
   static async addUser(projectId: string, userId: string, roles: ProjectRole = 'viewer', options?: BaseModelOptions): Promise<string> {
-    const ncMeta = options?.ncMeta || getNcMeta();
+    const db = options?.knex || getDb();
     const now = new Date();
+    const id = generateId();
 
     const data: Partial<ProjectUser> = {
+      id,
       project_id: projectId,
       user_id: userId,
       roles,
@@ -185,7 +190,7 @@ export class Project {
       updated_at: now,
     };
 
-    const id = await ncMeta.metaInsert(null, null, MetaTable.PROJECT_USERS, data as Record<string, unknown>);
+    await db(MetaTable.PROJECT_USERS).insert(data);
 
     if (!options?.skipCache) {
       const cache = NocoCache.getInstance();
@@ -196,8 +201,11 @@ export class Project {
   }
 
   static async updateUserRole(projectId: string, userId: string, roles: ProjectRole, options?: BaseModelOptions): Promise<void> {
-    const ncMeta = options?.ncMeta || getNcMeta();
-    await ncMeta.metaUpdate(null, null, MetaTable.PROJECT_USERS, { roles, updated_at: new Date() }, { project_id: projectId, user_id: userId });
+    const db = options?.knex || getDb();
+    await db(MetaTable.PROJECT_USERS)
+      .where({ project_id: projectId, user_id: userId })
+      .update({ roles, updated_at: new Date() });
+    
     if (!options?.skipCache) {
       const cache = NocoCache.getInstance();
       await cache.del(`projects:user:${userId}`);
@@ -205,8 +213,11 @@ export class Project {
   }
 
   static async removeUser(projectId: string, userId: string, options?: BaseModelOptions): Promise<void> {
-    const ncMeta = options?.ncMeta || getNcMeta();
-    await ncMeta.metaDelete(null, null, MetaTable.PROJECT_USERS, { project_id: projectId, user_id: userId });
+    const db = options?.knex || getDb();
+    await db(MetaTable.PROJECT_USERS)
+      .where({ project_id: projectId, user_id: userId })
+      .delete();
+    
     if (!options?.skipCache) {
       const cache = NocoCache.getInstance();
       await cache.del(`projects:user:${userId}`);
@@ -214,14 +225,17 @@ export class Project {
   }
 
   static async getUserRole(projectId: string, userId: string, options?: BaseModelOptions): Promise<ProjectRole | null> {
-    const ncMeta = options?.ncMeta || getNcMeta();
-    const result = await ncMeta.metaGet2(null, null, MetaTable.PROJECT_USERS, { project_id: projectId, user_id: userId }, ['roles']);
+    const db = options?.knex || getDb();
+    const result = await db(MetaTable.PROJECT_USERS)
+      .where({ project_id: projectId, user_id: userId })
+      .select('roles')
+      .first();
     return result?.roles as ProjectRole | null;
   }
 
   static async listUsers(projectId: string, options?: BaseModelOptions): Promise<Array<ProjectUser & { email: string; firstname?: string; lastname?: string }>> {
-    const ncMeta = options?.ncMeta || getNcMeta();
-    return ncMeta.getKnex()
+    const db = options?.knex || getDb();
+    return db
       .select('pu.*', 'u.email', 'u.firstname', 'u.lastname')
       .from(`${MetaTable.PROJECT_USERS} as pu`)
       .join(`${MetaTable.USERS} as u`, 'pu.user_id', 'u.id')

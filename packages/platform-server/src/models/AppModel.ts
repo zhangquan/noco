@@ -5,7 +5,7 @@
 
 import { CacheScope, MetaTable } from '../types/index.js';
 import type { AppModel as AppModelType, AppType } from '../types/index.js';
-import { getNcMeta } from '../lib/NcMetaIO.js';
+import { getDb, generateId } from '../db/index.js';
 import { NocoCache } from '../cache/index.js';
 import {
   getById,
@@ -71,16 +71,18 @@ export class AppModel {
     fk_schema_id?: string;
     meta?: Record<string, unknown>;
   }, options?: BaseModelOptions): Promise<AppModel> {
-    const ncMeta = options?.ncMeta || getNcMeta();
+    const db = options?.knex || getDb();
     const now = new Date();
+    const id = generateId();
 
-    const maxOrder = await ncMeta.getKnex()
+    const maxOrder = await db
       .from(META_TABLE)
       .where('project_id', data.project_id)
       .max('order as max')
       .first();
 
     const appData: Partial<AppModelType> = {
+      id,
       project_id: data.project_id,
       title: data.title,
       type: data.type,
@@ -92,7 +94,8 @@ export class AppModel {
       updated_at: now,
     };
 
-    const id = await ncMeta.metaInsert(null, null, META_TABLE, appData as Record<string, unknown>);
+    await db(META_TABLE).insert(appData);
+    
     const app = await this.get(id, { ...options, skipCache: true });
     if (!app) throw new Error('Failed to create app');
 

@@ -10,10 +10,8 @@ import cors from 'cors';
 import helmet from 'helmet';
 import cookieParser from 'cookie-parser';
 import type { Knex } from 'knex';
-import knex from 'knex';
 
-import { initDatabase, createRestApi, createPersistentSchemaManager } from '@workspace/agentdb';
-import { initNcMeta } from './NcMetaIO.js';
+import { DatabaseManager, runMigrations, type DatabaseType } from '../db/index.js';
 import { initCache, type CacheConfig } from '../cache/index.js';
 import { configurePassport, configureAuth, requireAuth, optionalAuth, type AuthConfig } from '../auth/index.js';
 import {
@@ -25,7 +23,6 @@ import {
   createAuthRouter,
   createUserRouter,
 } from '../api/index.js';
-import { runMigrations } from './migrations.js';
 import {
   requestIdMiddleware,
   requestLoggingMiddleware,
@@ -40,23 +37,54 @@ import {
 } from '../middleware/index.js';
 
 // ============================================================================
+// AgentDB Dynamic Import
+// ============================================================================
+
+let agentDbModule: any = null;
+
+async function getAgentDb(): Promise<any | null> {
+  if (agentDbModule !== null) return agentDbModule;
+  try {
+    // @ts-ignore - Dynamic import of optional dependency
+    agentDbModule = await import('@workspace/agentdb');
+    return agentDbModule;
+  } catch {
+    console.warn('⚠️ AgentDB module not available, data API will be disabled');
+    agentDbModule = false;
+    return null;
+  }
+}
+
+// ============================================================================
 // Types
 // ============================================================================
 
 export interface AppConfig {
-  metaDbUrl?: string;
-  dataDbUrl?: string;
-  dbType?: 'pg' | 'mysql' | 'sqlite';
+  /** Database connection URL */
+  dbUrl?: string;
+  /** Database type */
+  dbType?: DatabaseType;
+  /** Redis/cache configuration */
   redis?: CacheConfig;
+  /** Auth configuration */
   auth?: Partial<AuthConfig>;
+  /** Enable CORS */
   enableCors?: boolean;
+  /** CORS origin */
   corsOrigin?: string | string[];
+  /** Enable rate limiting */
   enableRateLimit?: boolean;
+  /** Rate limit window in ms */
   rateLimitWindow?: number;
+  /** Rate limit max requests */
   rateLimitMax?: number;
+  /** Enable logging */
   enableLogging?: boolean;
+  /** Enable helmet security headers */
   enableHelmet?: boolean;
+  /** Skip running migrations */
   skipMigrations?: boolean;
+  /** API base path */
   apiBasePath?: string;
   /** Logger configuration */
   logging?: LoggerConfig;
@@ -74,14 +102,14 @@ export class App {
   private static instance: App | null = null;
   private app: Application;
   private httpServer: http.Server | null = null;
-  private metaDb: Knex | null = null;
-  private dataDb: Knex | null = null;
+  private dbManager: DatabaseManager;
   private config: AppConfig;
   private initialized = false;
 
   private constructor(config: AppConfig = {}) {
     this.config = config;
     this.app = express();
+    this.dbManager = DatabaseManager.getInstance();
   }
 
   static getInstance(config?: AppConfig): App {
@@ -101,13 +129,13 @@ export class App {
 
   getExpressApp(): Application { return this.app; }
   getHttpServer(): http.Server | null { return this.httpServer; }
-  getMetaDb(): Knex {
-    if (!this.metaDb) throw new Error('Meta database not initialized');
-    return this.metaDb;
+  
+  getDb(): Knex {
+    return this.dbManager.getDb();
   }
-  getDataDb(): Knex {
-    if (!this.dataDb) throw new Error('Data database not initialized');
-    return this.dataDb;
+
+  getDbManager(): DatabaseManager {
+    return this.dbManager;
   }
 
   private async initialize(): Promise<void> {
@@ -115,38 +143,38 @@ export class App {
 
     console.log('🚀 Initializing Platform Server...');
 
-    await this.initDatabases();
+    await this.initDatabase();
     this.initCache();
     if (!this.config.skipMigrations) await this.runMigrations();
     this.initAuth();
     this.configureMiddleware();
-    this.registerRoutes();
+    await this.registerRoutes();
     this.configureErrorHandlers();
 
     this.initialized = true;
     console.log('✅ Platform Server initialized successfully');
   }
 
-  private async initDatabases(): Promise<void> {
-    const metaDbUrl = this.config.metaDbUrl || process.env.META_SERVER_DB;
-    const dataDbUrl = this.config.dataDbUrl || process.env.DATA_SERVER_DB || metaDbUrl;
-    const dbType = this.config.dbType || (process.env.DB_TYPE as 'pg' | 'mysql' | 'sqlite') || 'pg';
+  private async initDatabase(): Promise<void> {
+    const dbUrl = this.config.dbUrl || process.env.DATABASE_URL || process.env.META_SERVER_DB;
+    const dbType = this.config.dbType || (process.env.DB_TYPE as DatabaseType) || 'pg';
 
-    if (!metaDbUrl) {
-      throw new Error('META_SERVER_DB environment variable or metaDbUrl config is required');
+    if (!dbUrl) {
+      throw new Error('DATABASE_URL environment variable or dbUrl config is required');
     }
 
-    console.log('📦 Connecting to databases...');
+    // Use DatabaseManager to handle connection
+    await this.dbManager.connect({
+      type: dbType,
+      connection: dbUrl,
+      pool: { min: 2, max: 10 },
+    });
 
-    this.metaDb = knex({ client: dbType === 'pg' ? 'pg' : dbType, connection: metaDbUrl, pool: { min: 2, max: 10 } });
-    this.dataDb = (dataDbUrl && dataDbUrl !== metaDbUrl)
-      ? knex({ client: dbType === 'pg' ? 'pg' : dbType, connection: dataDbUrl, pool: { min: 2, max: 10 } })
-      : this.metaDb;
-
-    initNcMeta(this.metaDb, dbType);
-    await initDatabase(this.dataDb);
-
-    console.log('✅ Database connections established');
+    // Initialize AgentDB if available
+    const agentDb = await getAgentDb();
+    if (agentDb) {
+      await agentDb.initDatabase(this.dbManager.getDb());
+    }
   }
 
   private initCache(): void {
@@ -162,8 +190,7 @@ export class App {
   }
 
   private async runMigrations(): Promise<void> {
-    console.log('📋 Running migrations...');
-    await runMigrations(this.metaDb!);
+    await runMigrations(this.dbManager.getDb());
     console.log('✅ Migrations completed');
   }
 
@@ -229,14 +256,15 @@ export class App {
     console.log('✅ Middleware configured');
   }
 
-  private registerRoutes(): void {
+  private async registerRoutes(): Promise<void> {
     console.log('🛤️ Registering routes...');
 
     const basePath = this.config.apiBasePath || '/api/v1/db';
+    const db = this.dbManager.getDb();
 
     // Health check routes with comprehensive checks
     const healthRouter = createHealthRouter(
-      () => this.metaDb,
+      () => db,
       { version: '0.98.3' }
     );
     this.app.use('/health', healthRouter);
@@ -266,51 +294,56 @@ export class App {
     // Flow routes
     this.app.use(`${basePath}/meta/projects/:projectId/flows`, authMiddleware, createFlowAppRouter());
 
-    // Data API routes with caching of SchemaManager
-    const dataDb = this.dataDb!;
-    const schemaManagerCache = new Map<string, { manager: ReturnType<typeof createPersistentSchemaManager>; lastAccess: number }>();
-    
-    // Clean up cache periodically
-    setInterval(() => {
-      const now = Date.now();
-      for (const [key, entry] of schemaManagerCache.entries()) {
-        if (now - entry.lastAccess > 5 * 60 * 1000) { // 5 minutes idle
-          schemaManagerCache.delete(key);
+    // Data API routes - only if AgentDB is available
+    const agentDb = await getAgentDb();
+    if (agentDb) {
+      const { createPersistentSchemaManager, createRestApi } = agentDb;
+      
+      // Cache for SchemaManagers
+      const schemaManagerCache = new Map<string, { manager: any; lastAccess: number }>();
+      
+      // Clean up cache periodically
+      setInterval(() => {
+        const now = Date.now();
+        for (const [key, entry] of schemaManagerCache.entries()) {
+          if (now - entry.lastAccess > 5 * 60 * 1000) { // 5 minutes idle
+            schemaManagerCache.delete(key);
+          }
         }
-      }
-    }, 60000);
+      }, 60000);
 
-    const dataRateLimiter = createRateLimitFromPreset('data');
-    
-    this.app.use(`${basePath}/data/:projectId`, optionalAuthMiddleware, dataRateLimiter, async (req: Request, res: Response, next: NextFunction) => {
-      try {
-        const { projectId } = req.params;
-        const cacheKey = `project:${projectId}`;
-        
-        // Get or create SchemaManager with caching
-        let cached = schemaManagerCache.get(cacheKey);
-        if (!cached) {
-          const manager = createPersistentSchemaManager({ db: dataDb, namespace: cacheKey });
-          try { await manager.load(); } catch { /* No schema yet */ }
-          cached = { manager, lastAccess: Date.now() };
-          schemaManagerCache.set(cacheKey, cached);
-        } else {
-          cached.lastAccess = Date.now();
+      const dataRateLimiter = createRateLimitFromPreset('data');
+      
+      this.app.use(`${basePath}/data/:projectId`, optionalAuthMiddleware, dataRateLimiter, async (req: Request, res: Response, next: NextFunction) => {
+        try {
+          const { projectId } = req.params;
+          const cacheKey = `project:${projectId}`;
+          
+          // Get or create SchemaManager with caching
+          let cached = schemaManagerCache.get(cacheKey);
+          if (!cached) {
+            const manager = createPersistentSchemaManager({ db, namespace: cacheKey });
+            try { await manager.load(); } catch { /* No schema yet */ }
+            cached = { manager, lastAccess: Date.now() };
+            schemaManagerCache.set(cacheKey, cached);
+          } else {
+            cached.lastAccess = Date.now();
+          }
+
+          const tables = cached.manager.getTables();
+          const dataRouter = createRestApi({
+            db,
+            tables,
+            basePath: '',
+            enablePublicApi: true,
+            enableExportApi: true,
+          });
+          dataRouter(req as any, res as any, next);
+        } catch (error) {
+          next(error);
         }
-
-        const tables = cached.manager.getTables();
-        const dataRouter = createRestApi({
-          db: dataDb,
-          tables,
-          basePath: '',
-          enablePublicApi: true,
-          enableExportApi: true,
-        });
-        dataRouter(req as any, res as any, next);
-      } catch (error) {
-        next(error);
-      }
-    });
+      });
+    }
 
     console.log('✅ Routes registered');
   }
@@ -347,10 +380,14 @@ export class App {
     if (this.httpServer) {
       await new Promise<void>((resolve) => { this.httpServer!.close(() => resolve()); });
     }
-    if (this.metaDb) await this.metaDb.destroy();
-    if (this.dataDb && this.dataDb !== this.metaDb) await this.dataDb.destroy();
+    
+    // Close database connection
+    await this.dbManager.disconnect();
+    
+    // Close cache
     const { NocoCache } = await import('../cache/index.js');
     await NocoCache.getInstance().close();
+    
     App.instance = null;
     console.log('👋 Shutdown complete');
   }

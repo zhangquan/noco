@@ -5,7 +5,7 @@
 
 import { CacheScope, MetaTable } from '../types/index.js';
 import type { Page as PageType } from '../types/index.js';
-import { getNcMeta } from '../lib/NcMetaIO.js';
+import { getDb, generateId } from '../db/index.js';
 import { NocoCache } from '../cache/index.js';
 import {
   getById,
@@ -64,18 +64,20 @@ export class Page {
     fk_schema_id?: string;
     meta?: Record<string, unknown>;
   }, options?: BaseModelOptions): Promise<Page> {
-    const ncMeta = options?.ncMeta || getNcMeta();
+    const db = options?.knex || getDb();
     const now = new Date();
+    const id = generateId();
 
     const route = data.route || '/' + data.title.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
 
-    const maxOrder = await ncMeta.getKnex()
+    const maxOrder = await db
       .from(META_TABLE)
       .where('app_id', data.app_id)
       .max('order as max')
       .first();
 
     const pageData: Partial<PageType> = {
+      id,
       app_id: data.app_id,
       title: data.title,
       route,
@@ -86,7 +88,8 @@ export class Page {
       updated_at: now,
     };
 
-    const id = await ncMeta.metaInsert(null, null, META_TABLE, pageData as Record<string, unknown>);
+    await db(META_TABLE).insert(pageData);
+    
     const page = await this.get(id, { ...options, skipCache: true });
     if (!page) throw new Error('Failed to create page');
 
@@ -128,12 +131,11 @@ export class Page {
   }
 
   static async reorder(appId: string, pageOrders: Array<{ id: string; order: number }>, options?: BaseModelOptions): Promise<void> {
-    const ncMeta = options?.ncMeta || getNcMeta();
+    const db = options?.knex || getDb();
 
-    await ncMeta.transaction(async (trx) => {
-      const trxMeta = ncMeta.withTransaction(trx);
+    await db.transaction(async (trx) => {
       for (const { id, order } of pageOrders) {
-        await trxMeta.metaUpdate(null, null, META_TABLE, { order }, id);
+        await trx(META_TABLE).where('id', id).update({ order, updated_at: new Date() });
       }
     });
 

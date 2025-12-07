@@ -4,13 +4,14 @@
  */
 
 import { Router, type Request, type Response, type NextFunction } from 'express';
+import type { Knex } from 'knex';
 import { Project } from '../models/Project.js';
 import { Database } from '../models/Database.js';
 import { AppModel } from '../models/AppModel.js';
 import { FlowApp } from '../models/Flow.js';
 import { User } from '../models/User.js';
 import type { ApiRequest, ProjectRole } from '../types/index.js';
-import { getNcMeta } from '../lib/NcMetaIO.js';
+import { getDb } from '../db/index.js';
 
 // ============================================================================
 // Handler Functions
@@ -92,20 +93,18 @@ export async function projectCreate(
       return;
     }
 
-    const ncMeta = getNcMeta();
+    const db = getDb();
 
     // Use transaction for atomic operations
-    await ncMeta.transaction(async (trx) => {
-      const trxMeta = ncMeta.withTransaction(trx);
-
+    await db.transaction(async (trx: Knex.Transaction) => {
       // 1. Create the project
       const project = await Project.createProject(
         { title, description, prefix, org_id },
-        { ncMeta: trxMeta }
+        { knex: trx }
       );
 
       // 2. Add current user as owner
-      await Project.addUser(project.id, userId, 'owner', { ncMeta: trxMeta });
+      await Project.addUser(project.id, userId, 'owner', { knex: trx });
 
       // 3. Create default data server database
       await Database.createBase(
@@ -115,7 +114,7 @@ export async function projectCreate(
           is_default_data_server_db: true,
           alias: 'Default',
         },
-        { ncMeta: trxMeta }
+        { knex: trx }
       );
 
       // 4. Create default page app
@@ -125,7 +124,7 @@ export async function projectCreate(
           title: 'Default App',
           type: 'page',
         },
-        { ncMeta: trxMeta }
+        { knex: trx }
       );
 
       // 5. Create default flow app
@@ -134,11 +133,11 @@ export async function projectCreate(
           project_id: project.id,
           title: 'Default Workflows',
         },
-        { ncMeta: trxMeta }
+        { knex: trx }
       );
 
       // Return the created project
-      const result = await Project.get(project.id, { ncMeta: trxMeta, skipCache: true });
+      const result = await Project.get(project.id, { knex: trx, skipCache: true });
       res.status(201).json(result?.toJSON());
     });
   } catch (error) {

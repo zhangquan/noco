@@ -1,78 +1,36 @@
 /**
  * Database Migrations
- * @module lib/migrations
+ * @module db/migrations
  */
 
 import type { Knex } from 'knex';
-import { MetaTable } from '../types/index.js';
+import { MigrationRunner } from './MigrationRunner.js';
+import type { Migration } from './types.js';
 
 // ============================================================================
-// Migration Functions
+// Meta Table Names (duplicated here to avoid circular dependency)
 // ============================================================================
 
-/**
- * Run all migrations
- */
-export async function runMigrations(db: Knex): Promise<void> {
-  // Create migrations tracking table if not exists
-  const hasMigrations = await db.schema.hasTable('nc_migrations');
-  if (!hasMigrations) {
-    await db.schema.createTable('nc_migrations', (t) => {
-      t.string('id', 26).primary();
-      t.string('name', 255).notNullable().unique();
-      t.timestamp('executed_at').defaultTo(db.fn.now());
-    });
-  }
-
-  // Get executed migrations
-  const executed = await db('nc_migrations').select('name');
-  const executedNames = new Set(executed.map(m => m.name));
-
-  // Run pending migrations
-  for (const migration of MIGRATIONS) {
-    if (!executedNames.has(migration.name)) {
-      console.log(`  Running migration: ${migration.name}`);
-      await migration.up(db);
-      await db('nc_migrations').insert({
-        id: `mig_${Date.now()}`,
-        name: migration.name,
-      });
-    }
-  }
-}
-
-/**
- * Rollback last migration
- */
-export async function rollbackMigration(db: Knex): Promise<void> {
-  const lastMigration = await db('nc_migrations')
-    .orderBy('executed_at', 'desc')
-    .first();
-
-  if (!lastMigration) {
-    console.log('No migrations to rollback');
-    return;
-  }
-
-  const migration = MIGRATIONS.find(m => m.name === lastMigration.name);
-  if (migration) {
-    console.log(`  Rolling back: ${migration.name}`);
-    await migration.down(db);
-    await db('nc_migrations').where('name', migration.name).delete();
-  }
-}
+const MetaTable = {
+  USERS: 'nc_users',
+  PROJECTS: 'nc_projects',
+  PROJECT_USERS: 'nc_project_users',
+  BASES: 'nc_bases',
+  APPS: 'nc_apps',
+  PAGES: 'nc_pages',
+  FLOW_APPS: 'nc_flow_apps',
+  FLOWS: 'nc_flows',
+  SCHEMAS: 'nc_schemas',
+  ORGS: 'nc_orgs',
+  ORG_USERS: 'nc_org_users',
+  PUBLISH_STATES: 'nc_publish_states',
+} as const;
 
 // ============================================================================
 // Migration Definitions
 // ============================================================================
 
-interface Migration {
-  name: string;
-  up: (db: Knex) => Promise<void>;
-  down: (db: Knex) => Promise<void>;
-}
-
-const MIGRATIONS: Migration[] = [
+export const MIGRATIONS: Migration[] = [
   // =========================================================================
   // V1: Core Tables
   // =========================================================================
@@ -420,5 +378,49 @@ const MIGRATIONS: Migration[] = [
   },
 ];
 
-export { MIGRATIONS };
+// ============================================================================
+// Migration Functions
+// ============================================================================
+
+/**
+ * Run all pending migrations
+ */
+export async function runMigrations(db: Knex): Promise<void> {
+  console.log('📋 Running migrations...');
+  const runner = new MigrationRunner(db, MIGRATIONS);
+  const result = await runner.runAll();
+  
+  if (!result.success) {
+    throw new Error(`Migration failed: ${result.error}`);
+  }
+}
+
+/**
+ * Rollback last migration
+ */
+export async function rollbackMigration(db: Knex): Promise<void> {
+  console.log('📋 Rolling back migration...');
+  const runner = new MigrationRunner(db, MIGRATIONS);
+  const result = await runner.rollbackLast();
+  
+  if (!result.success) {
+    throw new Error(`Rollback failed: ${result.error}`);
+  }
+}
+
+/**
+ * Get migration status
+ */
+export async function getMigrationStatus(db: Knex): Promise<{
+  executed: string[];
+  pending: string[];
+}> {
+  const runner = new MigrationRunner(db, MIGRATIONS);
+  const status = await runner.getStatus();
+  return {
+    executed: status.executed.map(m => m.name),
+    pending: status.pending,
+  };
+}
+
 export default runMigrations;
