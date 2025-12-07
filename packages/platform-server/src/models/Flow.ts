@@ -5,7 +5,7 @@
 
 import { CacheScope, MetaTable } from '../types/index.js';
 import type { FlowApp as FlowAppType, Flow as FlowType, FlowTriggerType } from '../types/index.js';
-import { getNcMeta } from '../lib/NcMetaIO.js';
+import { getMetaDb, generateId } from '../db/index.js';
 import { NocoCache } from '../cache/index.js';
 import {
   getById,
@@ -65,10 +65,12 @@ export class FlowApp {
     fk_schema_id?: string;
     meta?: Record<string, unknown>;
   }, options?: BaseModelOptions): Promise<FlowApp> {
-    const ncMeta = options?.ncMeta || getNcMeta();
+    const db = options?.knex || getMetaDb();
     const now = new Date();
+    const id = generateId();
 
     const flowAppData: Partial<FlowAppType> = {
+      id,
       project_id: data.project_id,
       title: data.title,
       trigger_type: data.trigger_type || 'manual',
@@ -79,7 +81,8 @@ export class FlowApp {
       updated_at: now,
     };
 
-    const id = await ncMeta.metaInsert(null, null, FLOW_APP_TABLE, flowAppData as Record<string, unknown>);
+    await db(FLOW_APP_TABLE).insert(flowAppData);
+    
     const flowApp = await this.get(id, { ...options, skipCache: true });
     if (!flowApp) throw new Error('Failed to create flow app');
 
@@ -103,8 +106,8 @@ export class FlowApp {
   static async delete(id: string, options?: BaseModelOptions): Promise<number> {
     const flowApp = await this.get(id, options);
     if (flowApp) {
-      const ncMeta = options?.ncMeta || getNcMeta();
-      await ncMeta.metaDeleteAll(null, null, FLOWS_TABLE, { flow_app_id: id });
+      const db = options?.knex || getMetaDb();
+      await db(FLOWS_TABLE).where('flow_app_id', id).delete();
     }
     const result = await deleteRecord(FLOW_CACHE_SCOPE, FLOW_APP_TABLE, id, options);
     if (flowApp && !options?.skipCache) {
@@ -173,16 +176,18 @@ export class Flow {
     title: string;
     definition?: Record<string, unknown>;
   }, options?: BaseModelOptions): Promise<Flow> {
-    const ncMeta = options?.ncMeta || getNcMeta();
+    const db = options?.knex || getMetaDb();
     const now = new Date();
+    const id = generateId();
 
-    const maxVersion = await ncMeta.getKnex()
+    const maxVersion = await db
       .from(FLOWS_TABLE)
       .where('flow_app_id', data.flow_app_id)
       .max('version as max')
       .first();
 
     const flowData: Partial<FlowType> = {
+      id,
       flow_app_id: data.flow_app_id,
       title: data.title,
       version: ((maxVersion as any)?.max || 0) + 1,
@@ -192,7 +197,8 @@ export class Flow {
       updated_at: now,
     };
 
-    const id = await ncMeta.metaInsert(null, null, FLOWS_TABLE, flowData as Record<string, unknown>);
+    await db(FLOWS_TABLE).insert(flowData);
+    
     const flow = await this.get(id, { ...options, skipCache: true });
     if (!flow) throw new Error('Failed to create flow');
 
@@ -228,7 +234,7 @@ export class Flow {
 
   static async listForFlowApp(flowAppId: string, options?: BaseModelOptions): Promise<Flow[]> {
     const cache = NocoCache.getInstance();
-    const ncMeta = options?.ncMeta || getNcMeta();
+    const db = options?.knex || getMetaDb();
     const cacheKey = `${FLOW_CACHE_SCOPE}:list:flows:${flowAppId}`;
 
     if (!options?.skipCache) {
@@ -236,22 +242,20 @@ export class Flow {
       if (cached) return cached.map(d => new Flow(d));
     }
 
-    const dataList = await ncMeta.metaList(null, null, FLOWS_TABLE, {
-      condition: { flow_app_id: flowAppId },
-      orderBy: { version: 'desc' },
-    });
+    const dataList = await db(FLOWS_TABLE)
+      .where('flow_app_id', flowAppId)
+      .orderBy('version', 'desc');
 
     if (!options?.skipCache) {
       await cache.set(cacheKey, dataList);
     }
 
-    return dataList.map(d => new Flow(d as unknown as FlowType));
+    return dataList.map((d: FlowType) => new Flow(d));
   }
 
   static async getLatest(flowAppId: string, options?: BaseModelOptions): Promise<Flow | null> {
-    const ncMeta = options?.ncMeta || getNcMeta();
-    const data = await ncMeta.getKnex()
-      .from(FLOWS_TABLE)
+    const db = options?.knex || getMetaDb();
+    const data = await db(FLOWS_TABLE)
       .where('flow_app_id', flowAppId)
       .orderBy('version', 'desc')
       .first();

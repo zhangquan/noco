@@ -5,7 +5,7 @@
 
 import { CacheScope, MetaTable } from '../types/index.js';
 import type { Database as DatabaseType, DatabaseType as DBType } from '../types/index.js';
-import { getNcMeta } from '../lib/NcMetaIO.js';
+import { getMetaDb, generateId } from '../db/index.js';
 import { NocoCache } from '../cache/index.js';
 import {
   getById,
@@ -83,8 +83,10 @@ export class Database {
     const defaultDb = await this.getDefaultDataServerDb(projectId, options);
     if (defaultDb) return defaultDb;
 
-    const ncMeta = options?.ncMeta || getNcMeta();
-    const data = await ncMeta.metaGet2(null, null, META_TABLE, { project_id: projectId, enabled: true });
+    const db = options?.knex || getMetaDb();
+    const data = await db(META_TABLE)
+      .where({ project_id: projectId, enabled: true })
+      .first();
     return data ? new Database(data as unknown as DatabaseType) : null;
   }
 
@@ -96,10 +98,12 @@ export class Database {
     is_default_data_server_db?: boolean;
     is_meta?: boolean;
   }, options?: BaseModelOptions): Promise<Database> {
-    const ncMeta = options?.ncMeta || getNcMeta();
+    const db = options?.knex || getMetaDb();
     const now = new Date();
+    const id = generateId();
 
     const databaseData: Record<string, unknown> = {
+      id,
       project_id: data.project_id,
       type: data.type,
       config: data.config ? encryptConfig(data.config) : undefined,
@@ -112,7 +116,8 @@ export class Database {
       updated_at: now,
     };
 
-    const id = await ncMeta.metaInsert(null, null, META_TABLE, databaseData);
+    await db(META_TABLE).insert(databaseData);
+    
     const database = await this.get(id, { ...options, skipCache: true });
     if (!database) throw new Error('Failed to create database');
 

@@ -19,7 +19,7 @@ export type DatabaseType = 'pg' | 'mysql' | 'sqlite';
  */
 export interface DatabaseConfig {
   /** Database type */
-  type: DatabaseType;
+  type?: DatabaseType;
   /** Connection URL or connection object */
   connection: string | Knex.StaticConnectionConfig;
   /** Connection pool settings */
@@ -45,87 +45,6 @@ export interface ConnectionStatus {
   type: DatabaseType;
   latencyMs?: number;
   error?: string;
-}
-
-// ============================================================================
-// Query Types
-// ============================================================================
-
-/**
- * Condition operator for advanced queries
- */
-export type ConditionOperator = 
-  | '=' | '!=' | '<>' 
-  | '>' | '>=' | '<' | '<=' 
-  | 'like' | 'ilike' | 'not like'
-  | 'in' | 'not in' 
-  | 'is' | 'is not'
-  | 'between';
-
-/**
- * Single condition for queries
- */
-export interface QueryCondition {
-  key: string;
-  value: unknown;
-  op?: ConditionOperator;
-}
-
-/**
- * Extended condition supporting nested AND/OR
- */
-export interface ExtendedCondition {
-  _and?: ExtendedCondition[];
-  _or?: ExtendedCondition[];
-  [key: string]: unknown;
-}
-
-/**
- * Query options for list operations
- */
-export interface QueryOptions {
-  /** Simple key-value conditions */
-  condition?: Record<string, unknown>;
-  /** Array of conditions with operators */
-  conditionArr?: QueryCondition[];
-  /** Extended conditions with AND/OR support */
-  xcCondition?: ExtendedCondition;
-  /** Order by columns */
-  orderBy?: Record<string, 'asc' | 'desc'>;
-  /** Limit results */
-  limit?: number;
-  /** Offset results */
-  offset?: number;
-  /** Select specific fields */
-  fields?: string[];
-}
-
-/**
- * Insert options
- */
-export interface InsertOptions {
-  /** Skip automatic ID generation */
-  ignoreIdGeneration?: boolean;
-  /** Skip automatic timestamp setting */
-  ignoreTimestamps?: boolean;
-}
-
-/**
- * Update options
- */
-export interface UpdateOptions {
-  /** Extended conditions */
-  xcCondition?: ExtendedCondition;
-  /** Skip automatic updated_at timestamp */
-  ignoreTimestamp?: boolean;
-}
-
-/**
- * Delete options
- */
-export interface DeleteOptions {
-  /** Extended conditions */
-  xcCondition?: ExtendedCondition;
 }
 
 // ============================================================================
@@ -163,15 +82,6 @@ export interface MigrationResult {
 }
 
 // ============================================================================
-// Transaction Types
-// ============================================================================
-
-/**
- * Transaction callback function type
- */
-export type TransactionCallback<T> = (trx: Knex.Transaction) => Promise<T>;
-
-// ============================================================================
 // ID Generator Types
 // ============================================================================
 
@@ -192,143 +102,3 @@ export type IdPrefix =
   | 'pru'  // Project User
   | 'oru'  // Org User
   | 'pub'; // Publish State
-
-// ============================================================================
-// Query Executor Interface
-// ============================================================================
-
-/**
- * Query executor interface for CRUD operations
- */
-export interface IQueryExecutor {
-  /**
-   * Get a single record by ID or condition
-   */
-  get<T = Record<string, unknown>>(
-    table: string,
-    idOrCondition: string | Record<string, unknown>,
-    fields?: string[]
-  ): Promise<T | null>;
-
-  /**
-   * List records with optional filtering
-   */
-  list<T = Record<string, unknown>>(
-    table: string,
-    options?: QueryOptions
-  ): Promise<T[]>;
-
-  /**
-   * Insert a single record
-   */
-  insert(
-    table: string,
-    data: Record<string, unknown>,
-    options?: InsertOptions
-  ): Promise<string>;
-
-  /**
-   * Insert multiple records
-   */
-  insertAll(
-    table: string,
-    data: Record<string, unknown>[],
-    options?: InsertOptions
-  ): Promise<string[]>;
-
-  /**
-   * Update record(s)
-   */
-  update(
-    table: string,
-    data: Record<string, unknown>,
-    idOrCondition: string | Record<string, unknown>,
-    options?: UpdateOptions
-  ): Promise<number>;
-
-  /**
-   * Delete record(s)
-   */
-  delete(
-    table: string,
-    idOrCondition: string | Record<string, unknown>,
-    options?: DeleteOptions
-  ): Promise<number>;
-
-  /**
-   * Count records
-   */
-  count(
-    table: string,
-    condition?: Record<string, unknown>
-  ): Promise<number>;
-
-  /**
-   * Execute raw SQL
-   */
-  raw<T = unknown>(sql: string, bindings?: unknown[]): Promise<T>;
-
-  /**
-   * Check if table exists
-   */
-  tableExists(tableName: string): Promise<boolean>;
-
-  /**
-   * Execute within a transaction
-   */
-  transaction<T>(callback: TransactionCallback<T>): Promise<T>;
-
-  /**
-   * Create a new executor instance bound to a transaction
-   */
-  withTransaction(trx: Knex.Transaction): IQueryExecutor;
-
-  /**
-   * Get the underlying Knex instance
-   */
-  getKnex(): Knex;
-}
-
-// ============================================================================
-// Database Manager Interface
-// ============================================================================
-
-/**
- * Database manager interface
- */
-export interface IDatabaseManager {
-  /**
-   * Initialize database connection
-   */
-  connect(config: DatabaseConfig): Promise<void>;
-
-  /**
-   * Close database connection
-   */
-  disconnect(): Promise<void>;
-
-  /**
-   * Check connection health
-   */
-  healthCheck(): Promise<ConnectionStatus>;
-
-  /**
-   * Get query executor
-   */
-  getQueryExecutor(): IQueryExecutor;
-
-  /**
-   * Get underlying Knex instance
-   */
-  getKnex(): Knex;
-
-  /**
-   * Get database type
-   */
-  getDatabaseType(): DatabaseType;
-
-  /**
-   * Check if connected
-   */
-  isConnected(): boolean;
-}

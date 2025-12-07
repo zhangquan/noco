@@ -10,8 +10,35 @@
 // ============================================================================
 
 export { App, type AppConfig } from './lib/App.js';
-export { runMigrations, rollbackMigration } from './lib/migrations.js';
-export { NcMetaIO, initNcMeta, getNcMeta } from './lib/NcMetaIO.js';
+export { runMigrations, rollbackMigration, getMigrationStatus } from './lib/migrations.js';
+
+// ============================================================================
+// Database Layer
+// ============================================================================
+
+export {
+  // Database Manager
+  DatabaseManager,
+  getDbManager,
+  getMetaDb,
+  getDataDb,
+  getDatabaseType,
+  // Migration Runner
+  MigrationRunner,
+  // ID Generator
+  IdGenerator,
+  generateId,
+  generateIdWithPrefix,
+  ID_PREFIXES,
+  // Types
+  type DatabaseType,
+  type DatabaseConfig,
+  type ConnectionStatus,
+  type Migration,
+  type MigrationRecord,
+  type MigrationResult,
+  type IdPrefix,
+} from './db/index.js';
 
 // ============================================================================
 // Cache

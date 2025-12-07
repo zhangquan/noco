@@ -6,23 +6,70 @@
 
 import { Router, type Request, type Response, type NextFunction } from 'express';
 import type { Knex } from 'knex';
-import {
-  SchemaManager,
-  createPersistentSchemaManager,
-  type TableDefinition,
-  type ColumnDefinition,
-  type LinkDefinition,
-} from '@workspace/agentdb';
-import { getNcMeta } from '../lib/NcMetaIO.js';
 import type { ApiRequest } from '../types/index.js';
+import { getDataDb } from '../db/index.js';
 
 // ============================================================================
-// Types
+// Types (inline to avoid dependency on agentdb if not available)
 // ============================================================================
+
+interface SchemaManager {
+  getTables(): any[];
+  getTable(id: string): any;
+  createTable(def: any): Promise<any>;
+  updateTable(id: string, updates: any): Promise<any>;
+  dropTable(id: string): Promise<boolean>;
+  addColumn(tableId: string, col: any): Promise<any>;
+  updateColumn(tableId: string, colId: string, updates: any): Promise<any>;
+  dropColumn(tableId: string, colId: string): Promise<boolean>;
+  createLink(def: any): Promise<any>;
+  removeLink(tableId: string, colId: string): Promise<boolean>;
+  exportSchema(): any;
+  importSchema(schema: any, options?: any): Promise<void>;
+  save(): Promise<void>;
+  load(): Promise<void>;
+}
+
+interface TableDefinition {
+  title: string;
+  description?: string;
+  columns?: any[];
+}
+
+interface ColumnDefinition {
+  title: string;
+  uidt: string;
+  [key: string]: any;
+}
+
+interface LinkDefinition {
+  sourceTableId: string;
+  targetTableId: string;
+  linkColumnTitle: string;
+  [key: string]: any;
+}
 
 interface TableApiContext {
   schemaManager: SchemaManager;
   projectId: string;
+}
+
+// ============================================================================
+// Dynamic Import Helper
+// ============================================================================
+
+let agentDbModule: any = null;
+
+async function getAgentDb(): Promise<any> {
+  if (!agentDbModule) {
+    try {
+      // @ts-ignore - Dynamic import of optional dependency
+      agentDbModule = await import('@workspace/agentdb');
+    } catch {
+      throw new Error('AgentDB module not available');
+    }
+  }
+  return agentDbModule;
 }
 
 // ============================================================================
@@ -33,10 +80,10 @@ interface TableApiContext {
  * Get or create SchemaManager for a project
  */
 async function getSchemaManager(projectId: string): Promise<SchemaManager> {
-  const ncMeta = getNcMeta();
-  const db = ncMeta.getKnex();
+  const agentDb = await getAgentDb();
+  const db = getDataDb();
 
-  const manager = createPersistentSchemaManager({
+  const manager = agentDb.createPersistentSchemaManager({
     db,
     namespace: `project:${projectId}`,
     autoSave: true,

@@ -5,7 +5,6 @@
 
 import type { Request } from 'express';
 import type { Knex } from 'knex';
-import type { Table } from '@workspace/agentdb';
 
 // ============================================================================
 // User & Auth Types

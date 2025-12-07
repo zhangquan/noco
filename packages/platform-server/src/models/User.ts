@@ -6,7 +6,7 @@
 import bcrypt from 'bcryptjs';
 import { CacheScope, MetaTable } from '../types/index.js';
 import type { User as UserType, UserRole } from '../types/index.js';
-import { getNcMeta } from '../lib/NcMetaIO.js';
+import { getMetaDb, generateId } from '../db/index.js';
 import { NocoCache } from '../cache/index.js';
 import {
   getById,
@@ -14,6 +14,7 @@ import {
   listRecords,
   updateRecord,
   deleteRecord,
+  countRecords,
   type BaseModelOptions,
 } from './BaseModel.js';
 
@@ -100,7 +101,7 @@ export class User {
     roles?: UserRole;
     invite_token?: string;
   }, options?: BaseModelOptions): Promise<User> {
-    const ncMeta = options?.ncMeta || getNcMeta();
+    const db = options?.knex || getMetaDb();
     const now = new Date();
 
     let hashedPassword: string | undefined;
@@ -110,7 +111,9 @@ export class User {
       hashedPassword = await bcrypt.hash(data.password, salt);
     }
 
+    const id = generateId();
     const userData: Partial<UserType> = {
+      id,
       email: data.email.toLowerCase(),
       password: hashedPassword,
       salt,
@@ -123,7 +126,8 @@ export class User {
       updated_at: now,
     };
 
-    const id = await ncMeta.metaInsert(null, null, META_TABLE, userData as Record<string, unknown>);
+    await db(META_TABLE).insert(userData);
+    
     const user = await this.get(id, { ...options, skipCache: true });
     if (!user) throw new Error('Failed to create user');
 
@@ -172,8 +176,7 @@ export class User {
   }
 
   static async count(condition?: Record<string, unknown>): Promise<number> {
-    const ncMeta = getNcMeta();
-    return ncMeta.metaCount(null, null, META_TABLE, condition);
+    return countRecords(META_TABLE, condition);
   }
 }
 
