@@ -1,11 +1,11 @@
 /**
  * Flow App APIs
- * @module meta/api/flowAppApis
+ * @module api/flowAppApis
  */
 
 import { Router, type Request, type Response, type NextFunction } from 'express';
-import { FlowApp, Flow } from '../../models/Flow.js';
-import type { ApiRequest, FlowTriggerType } from '../../types/index.js';
+import { FlowApp, Flow } from '../models/Flow.js';
+import type { ApiRequest, FlowTriggerType } from '../types/index.js';
 
 // ============================================================================
 // FlowApp Handlers
@@ -136,32 +136,6 @@ export async function flowAppDelete(
 
     await FlowApp.delete(flowAppId);
     res.json({ success: true });
-  } catch (error) {
-    next(error);
-  }
-}
-
-/**
- * Publish a flow app
- */
-export async function flowAppPublish(
-  req: Request,
-  res: Response,
-  next: NextFunction
-): Promise<void> {
-  try {
-    const { flowAppId } = req.params;
-
-    const flowApp = await FlowApp.get(flowAppId);
-    if (!flowApp) {
-      res.status(404).json({ error: 'Flow app not found' });
-      return;
-    }
-
-    await FlowApp.publish(flowAppId);
-
-    const updated = await FlowApp.get(flowAppId);
-    res.json(updated?.toJSON());
   } catch (error) {
     next(error);
   }
@@ -326,15 +300,17 @@ export async function flowDelete(
 }
 
 /**
- * Publish a flow
+ * Save flow definition/schema
+ * This is the main API for saving flow definition
  */
-export async function flowPublish(
+export async function flowSave(
   req: Request,
   res: Response,
   next: NextFunction
 ): Promise<void> {
   try {
     const { flowId } = req.params;
+    const { definition, title } = req.body;
 
     const flow = await Flow.get(flowId);
     if (!flow) {
@@ -342,9 +318,49 @@ export async function flowPublish(
       return;
     }
 
-    await flow.publish();
+    // Build update object - only include provided fields
+    const updateData: Record<string, any> = {};
+    if (definition !== undefined) updateData.definition = definition;
+    if (title !== undefined) updateData.title = title;
+
+    await Flow.update(flowId, updateData);
 
     const updated = await Flow.get(flowId);
+    res.json(updated?.toJSON());
+  } catch (error) {
+    next(error);
+  }
+}
+
+/**
+ * Save flow app schema/meta
+ * This is the main API for saving flow app configuration
+ */
+export async function flowAppSave(
+  req: Request,
+  res: Response,
+  next: NextFunction
+): Promise<void> {
+  try {
+    const { flowAppId } = req.params;
+    const { title, trigger_type, enabled, meta } = req.body;
+
+    const flowApp = await FlowApp.get(flowAppId);
+    if (!flowApp) {
+      res.status(404).json({ error: 'Flow app not found' });
+      return;
+    }
+
+    // Build update object - only include provided fields
+    const updateData: Record<string, any> = {};
+    if (title !== undefined) updateData.title = title;
+    if (trigger_type !== undefined) updateData.trigger_type = trigger_type as FlowTriggerType;
+    if (enabled !== undefined) updateData.enabled = enabled;
+    if (meta !== undefined) updateData.meta = meta;
+
+    await FlowApp.update(flowAppId, updateData);
+
+    const updated = await FlowApp.get(flowAppId);
     res.json(updated?.toJSON());
   } catch (error) {
     next(error);
@@ -364,7 +380,7 @@ export function createFlowAppRouter(): Router {
   router.get('/:flowAppId', flowAppGet);
   router.patch('/:flowAppId', flowAppUpdate);
   router.delete('/:flowAppId', flowAppDelete);
-  router.post('/:flowAppId/publish', flowAppPublish);
+  router.post('/:flowAppId/save', flowAppSave);
 
   // Flow (Version) CRUD
   router.get('/:flowAppId/flows', flowList);
@@ -373,7 +389,7 @@ export function createFlowAppRouter(): Router {
   router.get('/:flowAppId/flows/:flowId', flowGet);
   router.patch('/:flowAppId/flows/:flowId', flowUpdate);
   router.delete('/:flowAppId/flows/:flowId', flowDelete);
-  router.post('/:flowAppId/flows/:flowId/publish', flowPublish);
+  router.post('/:flowAppId/flows/:flowId/save', flowSave);
 
   return router;
 }

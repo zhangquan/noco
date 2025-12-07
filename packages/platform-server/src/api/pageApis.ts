@@ -1,12 +1,12 @@
 /**
  * Page APIs
- * @module meta/api/pageApis
+ * @module api/pageApis
  */
 
 import { Router, type Request, type Response, type NextFunction } from 'express';
-import { Page } from '../../models/Page.js';
-import { AppModel } from '../../models/AppModel.js';
-import type { ApiRequest } from '../../types/index.js';
+import { Page } from '../models/Page.js';
+import { AppModel } from '../models/AppModel.js';
+import type { ApiRequest } from '../types/index.js';
 
 // ============================================================================
 // Page Handlers
@@ -229,6 +229,40 @@ export async function pageDuplicate(
   }
 }
 
+/**
+ * Save page schema (meta)
+ * This is the main API for saving page definition/schema
+ */
+export async function pageSave(
+  req: Request,
+  res: Response,
+  next: NextFunction
+): Promise<void> {
+  try {
+    const { pageId } = req.params;
+    const { meta, title, route } = req.body;
+
+    const page = await Page.get(pageId);
+    if (!page) {
+      res.status(404).json({ error: 'Page not found' });
+      return;
+    }
+
+    // Build update object - only include provided fields
+    const updateData: Record<string, any> = {};
+    if (meta !== undefined) updateData.meta = meta;
+    if (title !== undefined) updateData.title = title;
+    if (route !== undefined) updateData.route = route;
+
+    await Page.update(pageId, updateData);
+
+    const updated = await Page.get(pageId);
+    res.json(updated?.toJSON());
+  } catch (error) {
+    next(error);
+  }
+}
+
 // ============================================================================
 // Router
 // ============================================================================
@@ -245,6 +279,7 @@ export function createPageRouter(): Router {
   router.patch('/:pageId', pageUpdate);
   router.delete('/:pageId', pageDelete);
   router.post('/:pageId/duplicate', pageDuplicate);
+  router.post('/:pageId/save', pageSave);
 
   return router;
 }

@@ -1,16 +1,16 @@
 /**
  * Project APIs
- * @module meta/api/projectApis
+ * @module api/projectApis
  */
 
 import { Router, type Request, type Response, type NextFunction } from 'express';
-import { Project } from '../../models/Project.js';
-import { Database } from '../../models/Database.js';
-import { AppModel } from '../../models/AppModel.js';
-import { FlowApp } from '../../models/Flow.js';
-import { User } from '../../models/User.js';
-import type { ApiRequest, ProjectRole } from '../../types/index.js';
-import { getNcMeta } from '../../lib/NcMetaIO.js';
+import { Project } from '../models/Project.js';
+import { Database } from '../models/Database.js';
+import { AppModel } from '../models/AppModel.js';
+import { FlowApp } from '../models/Flow.js';
+import { User } from '../models/User.js';
+import type { ApiRequest, ProjectRole } from '../types/index.js';
+import { getNcMeta } from '../lib/NcMetaIO.js';
 
 // ============================================================================
 // Handler Functions
