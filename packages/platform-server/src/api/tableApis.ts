@@ -378,6 +378,83 @@ export async function schemaImport(
   }
 }
 
+/**
+ * Save schema - persist current schema to storage
+ * This is the main API for saving table schema changes
+ */
+export async function schemaSave(
+  req: Request,
+  res: Response,
+  next: NextFunction
+): Promise<void> {
+  try {
+    const { schemaManager } = (req as any).tableContext as TableApiContext;
+
+    // Save the current schema
+    await schemaManager.save();
+
+    const schema = schemaManager.exportSchema();
+    res.json({
+      success: true,
+      tableCount: schema.tables?.length || 0,
+      schema,
+    });
+  } catch (error) {
+    next(error);
+  }
+}
+
+/**
+ * Save a single table's schema
+ */
+export async function tableSave(
+  req: Request,
+  res: Response,
+  next: NextFunction
+): Promise<void> {
+  try {
+    const { schemaManager } = (req as any).tableContext as TableApiContext;
+    const { tableId } = req.params;
+    const { columns, title, description, hints } = req.body;
+
+    const table = schemaManager.getTable(tableId);
+    if (!table) {
+      res.status(404).json({ error: 'Table not found' });
+      return;
+    }
+
+    // Update table metadata if provided
+    if (title !== undefined || description !== undefined || hints !== undefined) {
+      await schemaManager.updateTable(tableId, {
+        title,
+        description,
+        hints,
+      });
+    }
+
+    // Update columns if provided
+    if (columns && Array.isArray(columns)) {
+      for (const col of columns) {
+        if (col.id) {
+          // Update existing column
+          await schemaManager.updateColumn(tableId, col.id, col);
+        } else {
+          // Add new column
+          await schemaManager.addColumn(tableId, col);
+        }
+      }
+    }
+
+    // Save changes
+    await schemaManager.save();
+
+    const updated = schemaManager.getTable(tableId);
+    res.json(updated);
+  } catch (error) {
+    next(error);
+  }
+}
+
 // ============================================================================
 // Router
 // ============================================================================
@@ -404,9 +481,13 @@ export function createTableRouter(): Router {
   router.post('/links', linkCreate);
   router.delete('/:tableId/links/:columnId', linkDelete);
 
-  // Schema import/export
+  // Schema import/export/save
   router.get('/schema/export', schemaExport);
   router.post('/schema/import', schemaImport);
+  router.post('/schema/save', schemaSave);
+
+  // Table save (save single table schema)
+  router.post('/:tableId/save', tableSave);
 
   return router;
 }
