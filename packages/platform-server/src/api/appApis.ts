@@ -1,12 +1,12 @@
 /**
  * App APIs
- * @module meta/api/appApis
+ * @module api/appApis
  */
 
 import { Router, type Request, type Response, type NextFunction } from 'express';
-import { AppModel } from '../../models/AppModel.js';
-import { Page } from '../../models/Page.js';
-import type { ApiRequest, AppType } from '../../types/index.js';
+import { AppModel } from '../models/AppModel.js';
+import { Page } from '../models/Page.js';
+import type { ApiRequest, AppType } from '../types/index.js';
 
 // ============================================================================
 // App Handlers
@@ -141,32 +141,6 @@ export async function appDelete(
   }
 }
 
-/**
- * Publish an app
- */
-export async function appPublish(
-  req: Request,
-  res: Response,
-  next: NextFunction
-): Promise<void> {
-  try {
-    const { appId } = req.params;
-
-    const app = await AppModel.get(appId);
-    if (!app) {
-      res.status(404).json({ error: 'App not found' });
-      return;
-    }
-
-    await AppModel.publish(appId);
-
-    const updated = await AppModel.get(appId);
-    res.json(updated?.toJSON());
-  } catch (error) {
-    next(error);
-  }
-}
-
 // ============================================================================
 // App with Pages
 // ============================================================================
@@ -242,7 +216,6 @@ export function createAppRouter(): Router {
   router.get('/:appId/with-pages', appGetWithPages);
   router.patch('/:appId', appUpdate);
   router.delete('/:appId', appDelete);
-  router.post('/:appId/publish', appPublish);
 
   return router;
 }

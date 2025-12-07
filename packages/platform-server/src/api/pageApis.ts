@@ -1,12 +1,12 @@
 /**
  * Page APIs
- * @module meta/api/pageApis
+ * @module api/pageApis
  */
 
 import { Router, type Request, type Response, type NextFunction } from 'express';
-import { Page } from '../../models/Page.js';
-import { AppModel } from '../../models/AppModel.js';
-import type { ApiRequest } from '../../types/index.js';
+import { Page } from '../models/Page.js';
+import { AppModel } from '../models/AppModel.js';
+import type { ApiRequest } from '../types/index.js';
 
 // ============================================================================
 // Page Handlers

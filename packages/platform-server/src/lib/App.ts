@@ -24,7 +24,7 @@ import {
   createFlowAppRouter,
   createAuthRouter,
   createUserRouter,
-} from '../meta/api/index.js';
+} from '../api/index.js';
 import { runMigrations } from './migrations.js';
 import {
   requestIdMiddleware,

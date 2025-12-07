@@ -1,12 +1,12 @@
 /**
  * User & Auth APIs
- * @module meta/api/userApis
+ * @module api/userApis
  */
 
 import { Router, type Request, type Response, type NextFunction } from 'express';
-import { User } from '../../models/User.js';
-import { generateToken, refreshToken } from '../../auth/index.js';
-import type { ApiRequest } from '../../types/index.js';
+import { User } from '../models/User.js';
+import { generateToken, refreshToken } from '../auth/index.js';
+import type { ApiRequest } from '../types/index.js';
 
 // ============================================================================
 // Auth Handlers

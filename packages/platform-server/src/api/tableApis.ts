@@ -1,7 +1,7 @@
 /**
  * Table/Model APIs
  * Uses agentdb SchemaManager for table/column management
- * @module meta/api/tableApis
+ * @module api/tableApis
  */
 
 import { Router, type Request, type Response, type NextFunction } from 'express';
@@ -13,8 +13,8 @@ import {
   type ColumnDefinition,
   type LinkDefinition,
 } from '@workspace/agentdb';
-import { getNcMeta } from '../../lib/NcMetaIO.js';
-import type { ApiRequest } from '../../types/index.js';
+import { getNcMeta } from '../lib/NcMetaIO.js';
+import type { ApiRequest } from '../types/index.js';
 
 // ============================================================================
 // Types

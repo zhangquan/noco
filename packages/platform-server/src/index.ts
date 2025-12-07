@@ -255,7 +255,7 @@ export {
 } from './utils/index.js';
 
 // ============================================================================
-// Meta APIs
+// APIs
 // ============================================================================
 
 export {
@@ -266,7 +266,7 @@ export {
   createFlowAppRouter,
   createAuthRouter,
   createUserRouter,
-} from './meta/api/index.js';
+} from './api/index.js';
 
 // ============================================================================
 // Default Export

@@ -1,11 +1,11 @@
 /**
  * Flow App APIs
- * @module meta/api/flowAppApis
+ * @module api/flowAppApis
  */
 
 import { Router, type Request, type Response, type NextFunction } from 'express';
-import { FlowApp, Flow } from '../../models/Flow.js';
-import type { ApiRequest, FlowTriggerType } from '../../types/index.js';
+import { FlowApp, Flow } from '../models/Flow.js';
+import type { ApiRequest, FlowTriggerType } from '../types/index.js';
 
 // ============================================================================
 // FlowApp Handlers
@@ -136,32 +136,6 @@ export async function flowAppDelete(
 
     await FlowApp.delete(flowAppId);
     res.json({ success: true });
-  } catch (error) {
-    next(error);
-  }
-}
-
-/**
- * Publish a flow app
- */
-export async function flowAppPublish(
-  req: Request,
-  res: Response,
-  next: NextFunction
-): Promise<void> {
-  try {
-    const { flowAppId } = req.params;
-
-    const flowApp = await FlowApp.get(flowAppId);
-    if (!flowApp) {
-      res.status(404).json({ error: 'Flow app not found' });
-      return;
-    }
-
-    await FlowApp.publish(flowAppId);
-
-    const updated = await FlowApp.get(flowAppId);
-    res.json(updated?.toJSON());
   } catch (error) {
     next(error);
   }
@@ -325,32 +299,6 @@ export async function flowDelete(
   }
 }
 
-/**
- * Publish a flow
- */
-export async function flowPublish(
-  req: Request,
-  res: Response,
-  next: NextFunction
-): Promise<void> {
-  try {
-    const { flowId } = req.params;
-
-    const flow = await Flow.get(flowId);
-    if (!flow) {
-      res.status(404).json({ error: 'Flow not found' });
-      return;
-    }
-
-    await flow.publish();
-
-    const updated = await Flow.get(flowId);
-    res.json(updated?.toJSON());
-  } catch (error) {
-    next(error);
-  }
-}
-
 // ============================================================================
 // Router
 // ============================================================================
@@ -364,7 +312,6 @@ export function createFlowAppRouter(): Router {
   router.get('/:flowAppId', flowAppGet);
   router.patch('/:flowAppId', flowAppUpdate);
   router.delete('/:flowAppId', flowAppDelete);
-  router.post('/:flowAppId/publish', flowAppPublish);
 
   // Flow (Version) CRUD
   router.get('/:flowAppId/flows', flowList);
@@ -373,7 +320,6 @@ export function createFlowAppRouter(): Router {
   router.get('/:flowAppId/flows/:flowId', flowGet);
   router.patch('/:flowAppId/flows/:flowId', flowUpdate);
   router.delete('/:flowAppId/flows/:flowId', flowDelete);
-  router.post('/:flowAppId/flows/:flowId/publish', flowPublish);
 
   return router;
 }
