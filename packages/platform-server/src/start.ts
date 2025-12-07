@@ -6,8 +6,7 @@
  *   npx tsx src/start.ts
  * 
  * Environment Variables:
- *   META_SERVER_DB - PostgreSQL connection string for metadata
- *   DATA_SERVER_DB - PostgreSQL connection string for data (defaults to META_SERVER_DB)
+ *   DATABASE_URL - PostgreSQL connection string
  *   REDIS_URL - Redis connection string (optional, defaults to in-memory cache)
  *   NC_AUTH_JWT_SECRET - JWT secret key
  *   PORT - Server port (default: 8080)
@@ -26,8 +25,7 @@ dotenv.config();
 const PORT = parseInt(process.env.PORT || '8080', 10);
 
 const config = {
-  metaDbUrl: process.env.META_SERVER_DB,
-  dataDbUrl: process.env.DATA_SERVER_DB,
+  dbUrl: process.env.DATABASE_URL || process.env.META_SERVER_DB,
   dbType: (process.env.DB_TYPE || 'pg') as 'pg' | 'mysql' | 'sqlite',
   enableCors: true,
   enableRateLimit: process.env.NODE_ENV === 'production',

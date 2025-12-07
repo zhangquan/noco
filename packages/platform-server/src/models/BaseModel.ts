@@ -5,7 +5,7 @@
 
 import type { Knex } from 'knex';
 import { NocoCache } from '../cache/index.js';
-import { getMetaDb, generateId } from '../db/index.js';
+import { getDb, generateId } from '../db/index.js';
 import { CacheScope, MetaTable } from '../types/index.js';
 
 // ============================================================================
@@ -37,7 +37,7 @@ function getCache(): NocoCache {
 }
 
 function getKnex(options?: BaseModelOptions): Knex {
-  return options?.knex || getMetaDb();
+  return options?.knex || getDb();
 }
 
 /**

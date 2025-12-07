@@ -11,7 +11,7 @@ import helmet from 'helmet';
 import cookieParser from 'cookie-parser';
 import type { Knex } from 'knex';
 
-import { DatabaseManager } from '../db/index.js';
+import { DatabaseManager, runMigrations, type DatabaseType } from '../db/index.js';
 import { initCache, type CacheConfig } from '../cache/index.js';
 import { configurePassport, configureAuth, requireAuth, optionalAuth, type AuthConfig } from '../auth/index.js';
 import {
@@ -23,7 +23,6 @@ import {
   createAuthRouter,
   createUserRouter,
 } from '../api/index.js';
-import { runMigrations } from './migrations.js';
 import {
   requestIdMiddleware,
   requestLoggingMiddleware,
@@ -36,7 +35,6 @@ import {
   type LoggerConfig,
   type ErrorHandlerOptions,
 } from '../middleware/index.js';
-import type { DatabaseType } from '../db/types.js';
 
 // ============================================================================
 // AgentDB Dynamic Import
@@ -62,19 +60,31 @@ async function getAgentDb(): Promise<any | null> {
 // ============================================================================
 
 export interface AppConfig {
-  metaDbUrl?: string;
-  dataDbUrl?: string;
+  /** Database connection URL */
+  dbUrl?: string;
+  /** Database type */
   dbType?: DatabaseType;
+  /** Redis/cache configuration */
   redis?: CacheConfig;
+  /** Auth configuration */
   auth?: Partial<AuthConfig>;
+  /** Enable CORS */
   enableCors?: boolean;
+  /** CORS origin */
   corsOrigin?: string | string[];
+  /** Enable rate limiting */
   enableRateLimit?: boolean;
+  /** Rate limit window in ms */
   rateLimitWindow?: number;
+  /** Rate limit max requests */
   rateLimitMax?: number;
+  /** Enable logging */
   enableLogging?: boolean;
+  /** Enable helmet security headers */
   enableHelmet?: boolean;
+  /** Skip running migrations */
   skipMigrations?: boolean;
+  /** API base path */
   apiBasePath?: string;
   /** Logger configuration */
   logging?: LoggerConfig;
@@ -120,12 +130,8 @@ export class App {
   getExpressApp(): Application { return this.app; }
   getHttpServer(): http.Server | null { return this.httpServer; }
   
-  getMetaDb(): Knex {
-    return this.dbManager.getMetaDb();
-  }
-  
-  getDataDb(): Knex {
-    return this.dbManager.getDataDb();
+  getDb(): Knex {
+    return this.dbManager.getDb();
   }
 
   getDbManager(): DatabaseManager {
@@ -137,7 +143,7 @@ export class App {
 
     console.log('🚀 Initializing Platform Server...');
 
-    await this.initDatabases();
+    await this.initDatabase();
     this.initCache();
     if (!this.config.skipMigrations) await this.runMigrations();
     this.initAuth();
@@ -149,33 +155,25 @@ export class App {
     console.log('✅ Platform Server initialized successfully');
   }
 
-  private async initDatabases(): Promise<void> {
-    const metaDbUrl = this.config.metaDbUrl || process.env.META_SERVER_DB;
-    const dataDbUrl = this.config.dataDbUrl || process.env.DATA_SERVER_DB || metaDbUrl;
+  private async initDatabase(): Promise<void> {
+    const dbUrl = this.config.dbUrl || process.env.DATABASE_URL || process.env.META_SERVER_DB;
     const dbType = this.config.dbType || (process.env.DB_TYPE as DatabaseType) || 'pg';
 
-    if (!metaDbUrl) {
-      throw new Error('META_SERVER_DB environment variable or metaDbUrl config is required');
+    if (!dbUrl) {
+      throw new Error('DATABASE_URL environment variable or dbUrl config is required');
     }
 
-    // Use DatabaseManager to handle connections
+    // Use DatabaseManager to handle connection
     await this.dbManager.connect({
-      meta: {
-        type: dbType,
-        connection: metaDbUrl,
-        pool: { min: 2, max: 10 },
-      },
-      data: dataDbUrl && dataDbUrl !== metaDbUrl ? {
-        type: dbType,
-        connection: dataDbUrl,
-        pool: { min: 2, max: 10 },
-      } : undefined,
+      type: dbType,
+      connection: dbUrl,
+      pool: { min: 2, max: 10 },
     });
 
-    // Initialize AgentDB with data database if available
+    // Initialize AgentDB if available
     const agentDb = await getAgentDb();
     if (agentDb) {
-      await agentDb.initDatabase(this.dbManager.getDataDb());
+      await agentDb.initDatabase(this.dbManager.getDb());
     }
   }
 
@@ -192,7 +190,7 @@ export class App {
   }
 
   private async runMigrations(): Promise<void> {
-    await runMigrations(this.dbManager.getMetaDb());
+    await runMigrations(this.dbManager.getDb());
     console.log('✅ Migrations completed');
   }
 
@@ -262,12 +260,11 @@ export class App {
     console.log('🛤️ Registering routes...');
 
     const basePath = this.config.apiBasePath || '/api/v1/db';
-    const metaDb = this.dbManager.getMetaDb();
-    const dataDb = this.dbManager.getDataDb();
+    const db = this.dbManager.getDb();
 
     // Health check routes with comprehensive checks
     const healthRouter = createHealthRouter(
-      () => metaDb,
+      () => db,
       { version: '0.98.3' }
     );
     this.app.use('/health', healthRouter);
@@ -325,7 +322,7 @@ export class App {
           // Get or create SchemaManager with caching
           let cached = schemaManagerCache.get(cacheKey);
           if (!cached) {
-            const manager = createPersistentSchemaManager({ db: dataDb, namespace: cacheKey });
+            const manager = createPersistentSchemaManager({ db, namespace: cacheKey });
             try { await manager.load(); } catch { /* No schema yet */ }
             cached = { manager, lastAccess: Date.now() };
             schemaManagerCache.set(cacheKey, cached);
@@ -335,7 +332,7 @@ export class App {
 
           const tables = cached.manager.getTables();
           const dataRouter = createRestApi({
-            db: dataDb,
+            db,
             tables,
             basePath: '',
             enablePublicApi: true,
@@ -384,7 +381,7 @@ export class App {
       await new Promise<void>((resolve) => { this.httpServer!.close(() => resolve()); });
     }
     
-    // Close database connections
+    // Close database connection
     await this.dbManager.disconnect();
     
     // Close cache

@@ -1,6 +1,6 @@
 /**
  * Database Manager
- * Manages database connections and provides access to Knex instances
+ * Manages database connection and provides access to Knex instance
  * @module db/DatabaseManager
  */
 
@@ -12,13 +12,12 @@ import type { DatabaseConfig, DatabaseType, ConnectionStatus } from './types.js'
 // ============================================================================
 
 /**
- * Database Manager - Singleton for managing database connections
+ * Database Manager - Singleton for managing database connection
  */
 export class DatabaseManager {
   private static instance: DatabaseManager | null = null;
 
-  private metaDb: Knex | null = null;
-  private dataDb: Knex | null = null;
+  private db: Knex | null = null;
   private dbType: DatabaseType = 'pg';
   private initialized = false;
 
@@ -39,8 +38,7 @@ export class DatabaseManager {
    */
   static resetInstance(): void {
     if (DatabaseManager.instance) {
-      DatabaseManager.instance.metaDb = null;
-      DatabaseManager.instance.dataDb = null;
+      DatabaseManager.instance.db = null;
       DatabaseManager.instance.initialized = false;
     }
     DatabaseManager.instance = null;
@@ -51,71 +49,52 @@ export class DatabaseManager {
   // ==========================================================================
 
   /**
-   * Initialize database connections
+   * Initialize database connection
    */
-  async connect(config: {
-    meta: DatabaseConfig;
-    data?: DatabaseConfig;
-  }): Promise<void> {
+  async connect(config: DatabaseConfig): Promise<void> {
     if (this.initialized) {
       console.warn('DatabaseManager already initialized');
       return;
     }
 
-    console.log('📦 Connecting to databases...');
+    console.log('📦 Connecting to database...');
 
     // Determine database type
-    this.dbType = config.meta.type || this.detectDatabaseType(config.meta.connection);
+    this.dbType = config.type || this.detectDatabaseType(config.connection);
 
-    // Create meta database connection
-    this.metaDb = this.createKnexInstance(config.meta);
+    // Create database connection
+    this.db = this.createKnexInstance(config);
 
-    // Create data database connection (or reuse meta)
-    if (config.data && config.data.connection !== config.meta.connection) {
-      this.dataDb = this.createKnexInstance(config.data);
-    } else {
-      this.dataDb = this.metaDb;
-    }
-
-    // Test connections
-    await this.testConnection(this.metaDb, 'meta');
-    if (this.dataDb !== this.metaDb) {
-      await this.testConnection(this.dataDb, 'data');
-    }
+    // Test connection
+    await this.testConnection();
 
     this.initialized = true;
-    console.log('✅ Database connections established');
+    console.log('✅ Database connection established');
   }
 
   /**
-   * Initialize with existing Knex instances
+   * Initialize with existing Knex instance
    */
-  initWithKnex(metaDb: Knex, dataDb?: Knex, dbType?: DatabaseType): void {
-    this.metaDb = metaDb;
-    this.dataDb = dataDb || metaDb;
+  initWithKnex(db: Knex, dbType?: DatabaseType): void {
+    this.db = db;
     this.dbType = dbType || 'pg';
     this.initialized = true;
   }
 
   /**
-   * Close all database connections
+   * Close database connection
    */
   async disconnect(): Promise<void> {
-    console.log('🔌 Closing database connections...');
+    console.log('🔌 Closing database connection...');
 
-    if (this.metaDb) {
-      await this.metaDb.destroy();
+    if (this.db) {
+      await this.db.destroy();
     }
 
-    if (this.dataDb && this.dataDb !== this.metaDb) {
-      await this.dataDb.destroy();
-    }
-
-    this.metaDb = null;
-    this.dataDb = null;
+    this.db = null;
     this.initialized = false;
 
-    console.log('✅ Database connections closed');
+    console.log('✅ Database connection closed');
   }
 
   // ==========================================================================
@@ -123,23 +102,13 @@ export class DatabaseManager {
   // ==========================================================================
 
   /**
-   * Get meta database Knex instance
+   * Get database Knex instance
    */
-  getMetaDb(): Knex {
-    if (!this.metaDb) {
-      throw new Error('Meta database not initialized. Call connect() first.');
+  getDb(): Knex {
+    if (!this.db) {
+      throw new Error('Database not initialized. Call connect() first.');
     }
-    return this.metaDb;
-  }
-
-  /**
-   * Get data database Knex instance
-   */
-  getDataDb(): Knex {
-    if (!this.dataDb) {
-      throw new Error('Data database not initialized. Call connect() first.');
-    }
-    return this.dataDb;
+    return this.db;
   }
 
   /**
@@ -164,7 +133,7 @@ export class DatabaseManager {
    * Check database connection health
    */
   async healthCheck(): Promise<ConnectionStatus> {
-    if (!this.metaDb) {
+    if (!this.db) {
       return {
         connected: false,
         type: this.dbType,
@@ -174,7 +143,7 @@ export class DatabaseManager {
 
     try {
       const start = Date.now();
-      await this.metaDb.raw('SELECT 1');
+      await this.db.raw('SELECT 1');
       const latencyMs = Date.now() - start;
 
       return {
@@ -196,17 +165,10 @@ export class DatabaseManager {
   // ==========================================================================
 
   /**
-   * Execute callback within a transaction on meta database
+   * Execute callback within a transaction
    */
   async transaction<T>(callback: (trx: Knex.Transaction) => Promise<T>): Promise<T> {
-    return this.getMetaDb().transaction(callback);
-  }
-
-  /**
-   * Execute callback within a transaction on data database
-   */
-  async dataTransaction<T>(callback: (trx: Knex.Transaction) => Promise<T>): Promise<T> {
-    return this.getDataDb().transaction(callback);
+    return this.getDb().transaction(callback);
   }
 
   // ==========================================================================
@@ -276,13 +238,17 @@ export class DatabaseManager {
   /**
    * Test database connection
    */
-  private async testConnection(db: Knex, name: string): Promise<void> {
+  private async testConnection(): Promise<void> {
+    if (!this.db) {
+      throw new Error('Database not created');
+    }
+    
     try {
-      await db.raw('SELECT 1');
-      console.log(`  ✓ ${name} database connected`);
+      await this.db.raw('SELECT 1');
+      console.log('  ✓ Database connected');
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Unknown error';
-      throw new Error(`Failed to connect to ${name} database: ${message}`);
+      throw new Error(`Failed to connect to database: ${message}`);
     }
   }
 }
@@ -299,17 +265,10 @@ export function getDbManager(): DatabaseManager {
 }
 
 /**
- * Get meta database Knex instance
+ * Get database Knex instance
  */
-export function getMetaDb(): Knex {
-  return DatabaseManager.getInstance().getMetaDb();
-}
-
-/**
- * Get data database Knex instance
- */
-export function getDataDb(): Knex {
-  return DatabaseManager.getInstance().getDataDb();
+export function getDb(): Knex {
+  return DatabaseManager.getInstance().getDb();
 }
 
 /**

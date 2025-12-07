@@ -10,7 +10,6 @@
 // ============================================================================
 
 export { App, type AppConfig } from './lib/App.js';
-export { runMigrations, rollbackMigration, getMigrationStatus } from './lib/migrations.js';
 
 // ============================================================================
 // Database Layer
@@ -20,11 +19,15 @@ export {
   // Database Manager
   DatabaseManager,
   getDbManager,
-  getMetaDb,
-  getDataDb,
+  getDb,
   getDatabaseType,
   // Migration Runner
   MigrationRunner,
+  // Migrations
+  MIGRATIONS,
+  runMigrations,
+  rollbackMigration,
+  getMigrationStatus,
   // ID Generator
   IdGenerator,
   generateId,

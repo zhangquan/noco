@@ -5,7 +5,7 @@
 
 import { CacheScope, MetaTable } from '../types/index.js';
 import type { Page as PageType } from '../types/index.js';
-import { getMetaDb, generateId } from '../db/index.js';
+import { getDb, generateId } from '../db/index.js';
 import { NocoCache } from '../cache/index.js';
 import {
   getById,
@@ -64,7 +64,7 @@ export class Page {
     fk_schema_id?: string;
     meta?: Record<string, unknown>;
   }, options?: BaseModelOptions): Promise<Page> {
-    const db = options?.knex || getMetaDb();
+    const db = options?.knex || getDb();
     const now = new Date();
     const id = generateId();
 
@@ -131,7 +131,7 @@ export class Page {
   }
 
   static async reorder(appId: string, pageOrders: Array<{ id: string; order: number }>, options?: BaseModelOptions): Promise<void> {
-    const db = options?.knex || getMetaDb();
+    const db = options?.knex || getDb();
 
     await db.transaction(async (trx) => {
       for (const { id, order } of pageOrders) {

@@ -5,7 +5,7 @@
 
 import { CacheScope, MetaTable } from '../types/index.js';
 import type { Project as ProjectType, ProjectUser, ProjectRole } from '../types/index.js';
-import { getMetaDb, generateId } from '../db/index.js';
+import { getDb, generateId } from '../db/index.js';
 import { NocoCache } from '../cache/index.js';
 import {
   getById,
@@ -73,7 +73,7 @@ export class Project {
     org_id?: string;
     meta?: Record<string, unknown>;
   }, options?: BaseModelOptions): Promise<Project> {
-    const db = options?.knex || getMetaDb();
+    const db = options?.knex || getDb();
     const now = new Date();
 
     const prefix = data.prefix || data.title.toLowerCase().replace(/[^a-z0-9]+/g, '_').slice(0, 10);
@@ -151,7 +151,7 @@ export class Project {
       if (cached) return cached.map(d => new Project(d));
     }
 
-    const db = options?.knex || getMetaDb();
+    const db = options?.knex || getDb();
     const results = await db
       .select('p.*')
       .from(`${META_TABLE} as p`)
@@ -174,7 +174,7 @@ export class Project {
 
   // Project User Management
   static async addUser(projectId: string, userId: string, roles: ProjectRole = 'viewer', options?: BaseModelOptions): Promise<string> {
-    const db = options?.knex || getMetaDb();
+    const db = options?.knex || getDb();
     const now = new Date();
     const id = generateId();
 
@@ -201,7 +201,7 @@ export class Project {
   }
 
   static async updateUserRole(projectId: string, userId: string, roles: ProjectRole, options?: BaseModelOptions): Promise<void> {
-    const db = options?.knex || getMetaDb();
+    const db = options?.knex || getDb();
     await db(MetaTable.PROJECT_USERS)
       .where({ project_id: projectId, user_id: userId })
       .update({ roles, updated_at: new Date() });
@@ -213,7 +213,7 @@ export class Project {
   }
 
   static async removeUser(projectId: string, userId: string, options?: BaseModelOptions): Promise<void> {
-    const db = options?.knex || getMetaDb();
+    const db = options?.knex || getDb();
     await db(MetaTable.PROJECT_USERS)
       .where({ project_id: projectId, user_id: userId })
       .delete();
@@ -225,7 +225,7 @@ export class Project {
   }
 
   static async getUserRole(projectId: string, userId: string, options?: BaseModelOptions): Promise<ProjectRole | null> {
-    const db = options?.knex || getMetaDb();
+    const db = options?.knex || getDb();
     const result = await db(MetaTable.PROJECT_USERS)
       .where({ project_id: projectId, user_id: userId })
       .select('roles')
@@ -234,7 +234,7 @@ export class Project {
   }
 
   static async listUsers(projectId: string, options?: BaseModelOptions): Promise<Array<ProjectUser & { email: string; firstname?: string; lastname?: string }>> {
-    const db = options?.knex || getMetaDb();
+    const db = options?.knex || getDb();
     return db
       .select('pu.*', 'u.email', 'u.firstname', 'u.lastname')
       .from(`${MetaTable.PROJECT_USERS} as pu`)

@@ -5,7 +5,7 @@
 
 import { CacheScope, MetaTable } from '../types/index.js';
 import type { Database as DatabaseType, DatabaseType as DBType } from '../types/index.js';
-import { getMetaDb, generateId } from '../db/index.js';
+import { getDb, generateId } from '../db/index.js';
 import { NocoCache } from '../cache/index.js';
 import {
   getById,
@@ -83,7 +83,7 @@ export class Database {
     const defaultDb = await this.getDefaultDataServerDb(projectId, options);
     if (defaultDb) return defaultDb;
 
-    const db = options?.knex || getMetaDb();
+    const db = options?.knex || getDb();
     const data = await db(META_TABLE)
       .where({ project_id: projectId, enabled: true })
       .first();
@@ -98,7 +98,7 @@ export class Database {
     is_default_data_server_db?: boolean;
     is_meta?: boolean;
   }, options?: BaseModelOptions): Promise<Database> {
-    const db = options?.knex || getMetaDb();
+    const db = options?.knex || getDb();
     const now = new Date();
     const id = generateId();
 

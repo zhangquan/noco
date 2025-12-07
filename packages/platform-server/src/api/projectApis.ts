@@ -11,7 +11,7 @@ import { AppModel } from '../models/AppModel.js';
 import { FlowApp } from '../models/Flow.js';
 import { User } from '../models/User.js';
 import type { ApiRequest, ProjectRole } from '../types/index.js';
-import { getMetaDb } from '../db/index.js';
+import { getDb } from '../db/index.js';
 
 // ============================================================================
 // Handler Functions
@@ -93,7 +93,7 @@ export async function projectCreate(
       return;
     }
 
-    const db = getMetaDb();
+    const db = getDb();
 
     // Use transaction for atomic operations
     await db.transaction(async (trx: Knex.Transaction) => {

@@ -5,7 +5,7 @@
 
 import { CacheScope, MetaTable } from '../types/index.js';
 import type { AppModel as AppModelType, AppType } from '../types/index.js';
-import { getMetaDb, generateId } from '../db/index.js';
+import { getDb, generateId } from '../db/index.js';
 import { NocoCache } from '../cache/index.js';
 import {
   getById,
@@ -71,7 +71,7 @@ export class AppModel {
     fk_schema_id?: string;
     meta?: Record<string, unknown>;
   }, options?: BaseModelOptions): Promise<AppModel> {
-    const db = options?.knex || getMetaDb();
+    const db = options?.knex || getDb();
     const now = new Date();
     const id = generateId();
 

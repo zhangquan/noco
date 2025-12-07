@@ -1,6 +1,6 @@
 /**
  * Database Layer Module
- * Manages database connections and migrations
+ * Manages database connection and migrations
  * @module db
  */
 
@@ -25,20 +25,24 @@ export type {
 export {
   DatabaseManager,
   getDbManager,
-  getMetaDb,
-  getDataDb,
+  getDb,
   getDatabaseType,
 } from './DatabaseManager.js';
 
 // ============================================================================
-// Migration Runner
+// Migrations
 // ============================================================================
 
 export {
   MigrationRunner,
+} from './MigrationRunner.js';
+
+export {
+  MIGRATIONS,
   runMigrations,
   rollbackMigration,
-} from './MigrationRunner.js';
+  getMigrationStatus,
+} from './migrations.js';
 
 // ============================================================================
 // ID Generator

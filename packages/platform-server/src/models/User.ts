@@ -6,7 +6,7 @@
 import bcrypt from 'bcryptjs';
 import { CacheScope, MetaTable } from '../types/index.js';
 import type { User as UserType, UserRole } from '../types/index.js';
-import { getMetaDb, generateId } from '../db/index.js';
+import { getDb, generateId } from '../db/index.js';
 import { NocoCache } from '../cache/index.js';
 import {
   getById,
@@ -101,7 +101,7 @@ export class User {
     roles?: UserRole;
     invite_token?: string;
   }, options?: BaseModelOptions): Promise<User> {
-    const db = options?.knex || getMetaDb();
+    const db = options?.knex || getDb();
     const now = new Date();
 
     let hashedPassword: string | undefined;

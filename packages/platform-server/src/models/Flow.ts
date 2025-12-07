@@ -5,7 +5,7 @@
 
 import { CacheScope, MetaTable } from '../types/index.js';
 import type { FlowApp as FlowAppType, Flow as FlowType, FlowTriggerType } from '../types/index.js';
-import { getMetaDb, generateId } from '../db/index.js';
+import { getDb, generateId } from '../db/index.js';
 import { NocoCache } from '../cache/index.js';
 import {
   getById,
@@ -65,7 +65,7 @@ export class FlowApp {
     fk_schema_id?: string;
     meta?: Record<string, unknown>;
   }, options?: BaseModelOptions): Promise<FlowApp> {
-    const db = options?.knex || getMetaDb();
+    const db = options?.knex || getDb();
     const now = new Date();
     const id = generateId();
 
@@ -106,7 +106,7 @@ export class FlowApp {
   static async delete(id: string, options?: BaseModelOptions): Promise<number> {
     const flowApp = await this.get(id, options);
     if (flowApp) {
-      const db = options?.knex || getMetaDb();
+      const db = options?.knex || getDb();
       await db(FLOWS_TABLE).where('flow_app_id', id).delete();
     }
     const result = await deleteRecord(FLOW_CACHE_SCOPE, FLOW_APP_TABLE, id, options);
@@ -176,7 +176,7 @@ export class Flow {
     title: string;
     definition?: Record<string, unknown>;
   }, options?: BaseModelOptions): Promise<Flow> {
-    const db = options?.knex || getMetaDb();
+    const db = options?.knex || getDb();
     const now = new Date();
     const id = generateId();
 
@@ -234,7 +234,7 @@ export class Flow {
 
   static async listForFlowApp(flowAppId: string, options?: BaseModelOptions): Promise<Flow[]> {
     const cache = NocoCache.getInstance();
-    const db = options?.knex || getMetaDb();
+    const db = options?.knex || getDb();
     const cacheKey = `${FLOW_CACHE_SCOPE}:list:flows:${flowAppId}`;
 
     if (!options?.skipCache) {
@@ -254,7 +254,7 @@ export class Flow {
   }
 
   static async getLatest(flowAppId: string, options?: BaseModelOptions): Promise<Flow | null> {
-    const db = options?.knex || getMetaDb();
+    const db = options?.knex || getDb();
     const data = await db(FLOWS_TABLE)
       .where('flow_app_id', flowAppId)
       .orderBy('version', 'desc')

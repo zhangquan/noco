@@ -7,7 +7,7 @@
 import { Router, type Request, type Response, type NextFunction } from 'express';
 import type { Knex } from 'knex';
 import type { ApiRequest } from '../types/index.js';
-import { getDataDb } from '../db/index.js';
+import { getDb } from '../db/index.js';
 
 // ============================================================================
 // Types (inline to avoid dependency on agentdb if not available)
@@ -81,7 +81,7 @@ async function getAgentDb(): Promise<any> {
  */
 async function getSchemaManager(projectId: string): Promise<SchemaManager> {
   const agentDb = await getAgentDb();
-  const db = getDataDb();
+  const db = getDb();
 
   const manager = agentDb.createPersistentSchemaManager({
     db,

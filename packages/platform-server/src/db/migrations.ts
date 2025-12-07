@@ -1,11 +1,30 @@
 /**
  * Database Migrations
- * @module lib/migrations
+ * @module db/migrations
  */
 
 import type { Knex } from 'knex';
-import { MigrationRunner, type Migration } from '../db/index.js';
-import { MetaTable } from '../types/index.js';
+import { MigrationRunner } from './MigrationRunner.js';
+import type { Migration } from './types.js';
+
+// ============================================================================
+// Meta Table Names (duplicated here to avoid circular dependency)
+// ============================================================================
+
+const MetaTable = {
+  USERS: 'nc_users',
+  PROJECTS: 'nc_projects',
+  PROJECT_USERS: 'nc_project_users',
+  BASES: 'nc_bases',
+  APPS: 'nc_apps',
+  PAGES: 'nc_pages',
+  FLOW_APPS: 'nc_flow_apps',
+  FLOWS: 'nc_flows',
+  SCHEMAS: 'nc_schemas',
+  ORGS: 'nc_orgs',
+  ORG_USERS: 'nc_org_users',
+  PUBLISH_STATES: 'nc_publish_states',
+} as const;
 
 // ============================================================================
 // Migration Definitions
