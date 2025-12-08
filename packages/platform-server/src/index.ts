@@ -1,6 +1,13 @@
 /**
  * Platform Server
- * Low-code platform backend service based on Express.js and AgentDB
+ * Low-code platform backend service with optimized architecture
+ * 
+ * Key Features:
+ * - Standardized REST API responses
+ * - Service layer for business logic separation
+ * - Base controller pattern for consistent handling
+ * - Type-safe validation with Zod
+ * - Comprehensive error handling
  *
  * @module platform-server
  */
@@ -10,6 +17,114 @@
 // ============================================================================
 
 export { App, type AppConfig } from './lib/App.js';
+
+// ============================================================================
+// Services (Business Logic Layer)
+// ============================================================================
+
+export {
+  // Base Service
+  BaseService,
+  type BaseEntity,
+  type ServiceOptions,
+  type ListOptions,
+  type PaginatedResult,
+  // User Service
+  UserService,
+  type CreateUserInput,
+  type UpdateUserInput,
+  type SignupInput,
+  type SigninInput,
+  type AuthResult,
+  type SafeUser,
+  // Project Service
+  ProjectService,
+  type CreateProjectInput,
+  type UpdateProjectInput,
+  type ProjectWithRole,
+  type ProjectUserInfo,
+  // Page Service
+  PageService,
+  type CreatePageInput,
+  type UpdatePageInput,
+  type PageReorderItem,
+  // Flow Service
+  FlowService,
+  type CreateFlowInput,
+  type UpdateFlowInput,
+  type FlowReorderItem,
+} from './services/index.js';
+
+// ============================================================================
+// API Layer (Controllers & Base Classes)
+// ============================================================================
+
+export {
+  // Base Controller
+  BaseController,
+  asyncHandler,
+  createHandler,
+  type HandlerContext,
+  type ControllerHandler,
+  type ValidationSchemas,
+  type ActionOptions,
+  // Router Factories
+  createAuthRouter,
+  createUserRouter,
+  createProjectRouter,
+  createPageRouter,
+  createFlowRouter,
+  createTableRouter,
+  tableContextMiddleware,
+  // Handler Functions (for testing/extension)
+  signup,
+  signin,
+  me,
+  projectList,
+  projectGet,
+  projectCreate,
+  projectUpdate,
+  projectDelete,
+  pageList,
+  pageGet,
+  pageCreate,
+  pageUpdate,
+  pageDelete,
+  pageSave,
+  flowList,
+  flowGet,
+  flowCreate,
+  flowUpdate,
+  flowDelete,
+  flowSave,
+  schemaSave,
+  tableSave,
+} from './api/index.js';
+
+// ============================================================================
+// Response Utilities
+// ============================================================================
+
+export {
+  // Response Helpers
+  apiResponse,
+  sendSuccess,
+  sendList,
+  sendCreated,
+  sendNoContent,
+  sendAccepted,
+  // Pagination
+  parsePagination,
+  createPaginationMeta,
+  PAGINATION_DEFAULTS,
+  // Types
+  type SuccessResponse,
+  type ListResponse,
+  type ResponseMeta,
+  type ListMeta,
+  type ErrorResponseBody,
+  type PaginationParams,
+} from './utils/response.js';
 
 // ============================================================================
 // Database Layer
@@ -82,7 +197,7 @@ export {
 } from './auth/index.js';
 
 // ============================================================================
-// Models
+// Models (Data Access Layer - Legacy)
 // ============================================================================
 
 export {
@@ -158,9 +273,8 @@ export {
   // Error Handling
   createErrorHandler,
   notFoundHandler,
-  asyncHandler,
   // Types
-  type ValidationSchemas,
+  type ValidationSchemas as MiddlewareValidationSchemas,
   type ParsedRequest,
   type LogEntry,
   type RequestLogData,
@@ -213,14 +327,14 @@ export {
   CreateLinkSchema,
   ImportSchemaSchema,
   // Input Types
-  type SignupInput,
-  type SigninInput,
-  type CreateProjectInput,
-  type UpdateProjectInput,
-  type CreatePageInput,
-  type UpdatePageInput,
-  type CreateFlowInput,
-  type UpdateFlowInput,
+  type SignupInput as SchemaSignupInput,
+  type SigninInput as SchemaSigninInput,
+  type CreateProjectInput as SchemaCreateProjectInput,
+  type UpdateProjectInput as SchemaUpdateProjectInput,
+  type CreatePageInput as SchemaCreatePageInput,
+  type UpdatePageInput as SchemaUpdatePageInput,
+  type CreateFlowInput as SchemaCreateFlowInput,
+  type UpdateFlowInput as SchemaUpdateFlowInput,
   type ListQueryInput,
 } from './middleware/index.js';
 
@@ -229,7 +343,7 @@ export {
 // ============================================================================
 
 export {
-  // Pagination
+  // Pagination (from utils)
   parsePaginationOptions,
   parseSortOptions,
   createPageInfo,
@@ -265,26 +379,13 @@ export {
   type PaginationInput,
   type SortInput,
   type PaginationOptions,
-  type PaginatedResult,
+  type PaginatedResult as UtilPaginatedResult,
   type PageInfo,
   type CursorPaginationInput,
   type CursorPageInfo,
   type CursorPaginatedResult,
   type PaginatedQueryOptions,
 } from './utils/index.js';
-
-// ============================================================================
-// APIs
-// ============================================================================
-
-export {
-  createProjectRouter,
-  createTableRouter,
-  createPageRouter,
-  createFlowRouter,
-  createAuthRouter,
-  createUserRouter,
-} from './api/index.js';
 
 // ============================================================================
 // Default Export
