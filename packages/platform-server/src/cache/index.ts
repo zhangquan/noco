@@ -306,9 +306,29 @@ export {
   cacheStats,
   cacheAsideWithStats,
   type CacheOptions,
-  type CacheKeyParts,
+  type CacheKeyParts as LegacyCacheKeyParts,
   type WarmCacheOptions,
   type CacheStats,
 } from './helpers.js';
+
+// Optimized cache key builders
+export {
+  CacheKeys,
+  cacheKey,
+  parseCacheKey as parseKey,
+  isValidCacheKey,
+  type CacheKeyParts,
+} from './keys.js';
+
+// Cache metrics
+export {
+  cacheMetrics,
+  withGetMetrics,
+  withSetMetrics,
+  withDeleteMetrics,
+  type CacheMetrics,
+  type ScopeMetrics,
+  type CacheOperation,
+} from './metrics.js';
 
 export default NocoCache;
