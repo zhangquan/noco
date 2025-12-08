@@ -88,12 +88,9 @@ export {
 export {
   User,
   Project,
-  Database,
-  AppModel,
   Page,
-  FlowApp,
   Flow,
-  type BaseModelOptions,
+  type TableOptions,
 } from './models/index.js';
 
 // ============================================================================
@@ -205,13 +202,9 @@ export {
   UpdateProfileSchema,
   UpdateUserSchema,
   InviteUserSchema,
-  CreateAppSchema,
-  UpdateAppSchema,
   ReorderSchema,
   CreatePageSchema,
   UpdatePageSchema,
-  CreateFlowAppSchema,
-  UpdateFlowAppSchema,
   CreateFlowSchema,
   UpdateFlowSchema,
   CreateTableSchema,
@@ -224,12 +217,8 @@ export {
   type SigninInput,
   type CreateProjectInput,
   type UpdateProjectInput,
-  type CreateAppInput,
-  type UpdateAppInput,
   type CreatePageInput,
   type UpdatePageInput,
-  type CreateFlowAppInput,
-  type UpdateFlowAppInput,
   type CreateFlowInput,
   type UpdateFlowInput,
   type ListQueryInput,
@@ -291,9 +280,8 @@ export {
 export {
   createProjectRouter,
   createTableRouter,
-  createAppRouter,
   createPageRouter,
-  createFlowAppRouter,
+  createFlowRouter,
   createAuthRouter,
   createUserRouter,
 } from './api/index.js';

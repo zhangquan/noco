@@ -6,9 +6,6 @@
 import { Router, type Request, type Response, type NextFunction } from 'express';
 import type { Knex } from 'knex';
 import { Project } from '../models/Project.js';
-import { Database } from '../models/Database.js';
-import { AppModel } from '../models/AppModel.js';
-import { FlowApp } from '../models/Flow.js';
 import { User } from '../models/User.js';
 import type { ApiRequest, ProjectRole } from '../types/index.js';
 import { getDb } from '../db/index.js';
@@ -105,36 +102,6 @@ export async function projectCreate(
 
       // 2. Add current user as owner
       await Project.addUser(project.id, userId, 'owner', { knex: trx });
-
-      // 3. Create default data server database
-      await Database.createBase(
-        {
-          project_id: project.id,
-          type: 'pg',
-          is_default_data_server_db: true,
-          alias: 'Default',
-        },
-        { knex: trx }
-      );
-
-      // 4. Create default page app
-      await AppModel.insert(
-        {
-          project_id: project.id,
-          title: 'Default App',
-          type: 'page',
-        },
-        { knex: trx }
-      );
-
-      // 5. Create default flow app
-      await FlowApp.insert(
-        {
-          project_id: project.id,
-          title: 'Default Workflows',
-        },
-        { knex: trx }
-      );
 
       // Return the created project
       const result = await Project.get(project.id, { knex: trx, skipCache: true });

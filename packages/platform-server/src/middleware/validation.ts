@@ -206,20 +206,7 @@ export const InviteUserSchema = z.object({
   roles: z.enum(['owner', 'creator', 'editor', 'viewer', 'commenter', 'guest']).default('viewer'),
 });
 
-// App Schemas
-export const CreateAppSchema = z.object({
-  title: TitleSchema,
-  type: z.enum(['page', 'flow', 'dashboard', 'form']).default('page'),
-  meta: z.record(z.unknown()).optional(),
-});
-
-export const UpdateAppSchema = z.object({
-  title: TitleSchema.optional(),
-  order: z.number().int().min(0).optional(),
-  status: z.enum(['active', 'inactive', 'archived']).optional(),
-  meta: z.record(z.unknown()).optional(),
-});
-
+// Reorder Schema
 export const ReorderSchema = z.object({
   orders: z.array(z.object({
     id: IdSchema,
@@ -231,6 +218,7 @@ export const ReorderSchema = z.object({
 export const CreatePageSchema = z.object({
   title: TitleSchema,
   route: z.string().max(255).regex(/^\/[a-z0-9\-\/]*$/, 'Route must start with / and contain only lowercase letters, numbers, and hyphens').optional(),
+  group_id: z.string().optional(),
   meta: z.record(z.unknown()).optional(),
 });
 
@@ -238,33 +226,27 @@ export const UpdatePageSchema = z.object({
   title: TitleSchema.optional(),
   route: z.string().max(255).optional(),
   order: z.number().int().min(0).optional(),
+  group_id: z.string().nullable().optional(),
   fk_schema_id: z.string().optional(),
   meta: z.record(z.unknown()).optional(),
 });
 
 // Flow Schemas
-export const CreateFlowAppSchema = z.object({
-  title: TitleSchema,
-  trigger_type: z.enum(['manual', 'schedule', 'webhook', 'record', 'form']).default('manual'),
-  meta: z.record(z.unknown()).optional(),
-});
-
-export const UpdateFlowAppSchema = z.object({
-  title: TitleSchema.optional(),
-  trigger_type: z.enum(['manual', 'schedule', 'webhook', 'record', 'form']).optional(),
-  enabled: z.boolean().optional(),
-  meta: z.record(z.unknown()).optional(),
-});
-
 export const CreateFlowSchema = z.object({
   title: TitleSchema,
-  definition: z.record(z.unknown()).optional(),
+  trigger_type: z.enum(['manual', 'schedule', 'webhook', 'record', 'form']).default('manual'),
+  group_id: z.string().optional(),
+  meta: z.record(z.unknown()).optional(),
 });
 
 export const UpdateFlowSchema = z.object({
   title: TitleSchema.optional(),
-  definition: z.record(z.unknown()).optional(),
-  status: z.enum(['draft', 'published', 'archived']).optional(),
+  trigger_type: z.enum(['manual', 'schedule', 'webhook', 'record', 'form']).optional(),
+  enabled: z.boolean().optional(),
+  order: z.number().int().min(0).optional(),
+  group_id: z.string().nullable().optional(),
+  fk_schema_id: z.string().optional(),
+  meta: z.record(z.unknown()).optional(),
 });
 
 // Table Schemas
@@ -319,12 +301,8 @@ export type SignupInput = z.infer<typeof SignupSchema>;
 export type SigninInput = z.infer<typeof SigninSchema>;
 export type CreateProjectInput = z.infer<typeof CreateProjectSchema>;
 export type UpdateProjectInput = z.infer<typeof UpdateProjectSchema>;
-export type CreateAppInput = z.infer<typeof CreateAppSchema>;
-export type UpdateAppInput = z.infer<typeof UpdateAppSchema>;
 export type CreatePageInput = z.infer<typeof CreatePageSchema>;
 export type UpdatePageInput = z.infer<typeof UpdatePageSchema>;
-export type CreateFlowAppInput = z.infer<typeof CreateFlowAppSchema>;
-export type UpdateFlowAppInput = z.infer<typeof UpdateFlowAppSchema>;
 export type CreateFlowInput = z.infer<typeof CreateFlowSchema>;
 export type UpdateFlowInput = z.infer<typeof UpdateFlowSchema>;
 export type ListQueryInput = z.infer<typeof ListQuerySchema>;

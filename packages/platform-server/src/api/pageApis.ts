@@ -5,7 +5,7 @@
 
 import { Router, type Request, type Response, type NextFunction } from 'express';
 import { Page } from '../models/Page.js';
-import { AppModel } from '../models/AppModel.js';
+import { Project } from '../models/Project.js';
 import type { ApiRequest } from '../types/index.js';
 
 // ============================================================================
@@ -13,7 +13,7 @@ import type { ApiRequest } from '../types/index.js';
 // ============================================================================
 
 /**
- * List pages in an app
+ * List pages in a project
  */
 export async function pageList(
   req: Request,
@@ -21,9 +21,10 @@ export async function pageList(
   next: NextFunction
 ): Promise<void> {
   try {
-    const { appId } = req.params;
+    const { projectId } = req.params;
+    const { groupId } = req.query;
 
-    const pages = await Page.listForApp(appId);
+    const pages = await Page.listForProject(projectId, groupId as string | undefined);
 
     res.json({
       list: pages.map(p => p.toJSON()),
@@ -65,7 +66,7 @@ export async function pageGetByRoute(
   next: NextFunction
 ): Promise<void> {
   try {
-    const { appId } = req.params;
+    const { projectId } = req.params;
     const { route } = req.query;
 
     if (!route || typeof route !== 'string') {
@@ -73,7 +74,7 @@ export async function pageGetByRoute(
       return;
     }
 
-    const page = await Page.getByRoute(appId, route);
+    const page = await Page.getByRoute(projectId, route);
     if (!page) {
       res.status(404).json({ error: 'Page not found' });
       return;
@@ -94,25 +95,26 @@ export async function pageCreate(
   next: NextFunction
 ): Promise<void> {
   try {
-    const { appId } = req.params;
-    const { title, route, meta } = req.body;
+    const { projectId } = req.params;
+    const { title, route, group_id, meta } = req.body;
 
     if (!title) {
       res.status(400).json({ error: 'Page title is required' });
       return;
     }
 
-    // Verify app exists
-    const app = await AppModel.get(appId);
-    if (!app) {
-      res.status(404).json({ error: 'App not found' });
+    // Verify project exists
+    const project = await Project.get(projectId);
+    if (!project) {
+      res.status(404).json({ error: 'Project not found' });
       return;
     }
 
     const page = await Page.insert({
-      app_id: appId,
+      project_id: projectId,
       title,
       route,
+      group_id,
       meta,
     });
 
@@ -132,7 +134,7 @@ export async function pageUpdate(
 ): Promise<void> {
   try {
     const { pageId } = req.params;
-    const { title, route, order, fk_schema_id, meta } = req.body;
+    const { title, route, order, group_id, fk_schema_id, meta } = req.body;
 
     const page = await Page.get(pageId);
     if (!page) {
@@ -140,7 +142,7 @@ export async function pageUpdate(
       return;
     }
 
-    await Page.update(pageId, { title, route, order, fk_schema_id, meta });
+    await Page.update(pageId, { title, route, order, group_id, fk_schema_id, meta });
 
     const updated = await Page.get(pageId);
     res.json(updated?.toJSON());
@@ -174,7 +176,7 @@ export async function pageDelete(
 }
 
 /**
- * Reorder pages in an app
+ * Reorder pages in a project
  */
 export async function pageReorder(
   req: Request,
@@ -182,7 +184,7 @@ export async function pageReorder(
   next: NextFunction
 ): Promise<void> {
   try {
-    const { appId } = req.params;
+    const { projectId } = req.params;
     const { orders } = req.body;
 
     if (!Array.isArray(orders)) {
@@ -190,7 +192,7 @@ export async function pageReorder(
       return;
     }
 
-    await Page.reorder(appId, orders);
+    await Page.reorder(projectId, orders);
 
     res.json({ success: true });
   } catch (error) {
@@ -217,9 +219,10 @@ export async function pageDuplicate(
     }
 
     const duplicated = await Page.insert({
-      app_id: page.appId,
+      project_id: page.projectId,
       title: newTitle || `${page.title} (Copy)`,
       route: undefined, // Will be auto-generated
+      group_id: page.groupId,
       meta: page.meta,
     });
 
@@ -263,6 +266,33 @@ export async function pageSave(
   }
 }
 
+/**
+ * Move page to a group
+ */
+export async function pageMoveToGroup(
+  req: Request,
+  res: Response,
+  next: NextFunction
+): Promise<void> {
+  try {
+    const { pageId } = req.params;
+    const { group_id } = req.body;
+
+    const page = await Page.get(pageId);
+    if (!page) {
+      res.status(404).json({ error: 'Page not found' });
+      return;
+    }
+
+    await Page.moveToGroup(pageId, group_id || null);
+
+    const updated = await Page.get(pageId);
+    res.json(updated?.toJSON());
+  } catch (error) {
+    next(error);
+  }
+}
+
 // ============================================================================
 // Router
 // ============================================================================
@@ -280,6 +310,7 @@ export function createPageRouter(): Router {
   router.delete('/:pageId', pageDelete);
   router.post('/:pageId/duplicate', pageDuplicate);
   router.post('/:pageId/save', pageSave);
+  router.post('/:pageId/move-to-group', pageMoveToGroup);
 
   return router;
 }
