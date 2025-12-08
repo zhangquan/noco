@@ -8,7 +8,9 @@ A monorepo for AI Agent-friendly database tools and utilities.
 |---------|-------------|
 | [@workspace/agentdb](./packages/agentdb) | AI Agent-friendly PostgreSQL database layer with JSONB storage |
 | [@workspace/platform-server](./packages/platform-server) | Low-code platform backend service with Express.js + AgentDB |
-| [@workspace/flow](./packages/flow) | React-based workflow/logic flow editor framework (FlowSDK) |
+| [@workspace/flow-designer](./packages/flow-designer) | Flow designer core - graph management, nodes, edges, schema |
+| [@workspace/flow-runtime](./packages/flow-runtime) | Flow runtime - execution engine, triggers, executors |
+| [@workspace/flow-ui](./packages/flow) | Flow UI - React components for visual flow editing |
 
 ## Getting Started
 
@@ -61,7 +63,23 @@ noco/
 │   │   ├── docs/
 │   │   ├── package.json
 │   │   └── tsconfig.json
-│   └── flow/             # FlowSDK - Workflow editor
+│   ├── flow-designer/    # Flow designer core
+│   │   ├── src/
+│   │   │   ├── core/     # FlowGraph, Node, Edge
+│   │   │   ├── registry/ # NodeRegistry
+│   │   │   ├── types/    # Type definitions
+│   │   │   └── utils/    # Serializer, Validator
+│   │   ├── package.json
+│   │   └── tsconfig.json
+│   ├── flow-runtime/     # Flow execution engine
+│   │   ├── src/
+│   │   │   ├── engine/   # ExecutionEngine
+│   │   │   ├── executors/ # ExecutorRegistry
+│   │   │   ├── triggers/ # TriggerManager
+│   │   │   └── types/    # Type definitions
+│   │   ├── package.json
+│   │   └── tsconfig.json
+│   └── flow/             # Flow UI (React components)
 │       ├── src/
 │       │   ├── components/
 │       │   ├── model/

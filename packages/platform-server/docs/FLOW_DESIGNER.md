@@ -921,3 +921,9 @@ const MyComponent = () => {
 - [API 路由参考](../README.md#api-路由) - 完整 API 列表
 - [错误码参考](../README.md#错误码) - 错误处理指南
 - [优化提案](../OPTIMIZATION_PROPOSAL.md) - 性能优化提案
+
+## 相关包
+
+- [@workspace/flow-designer](../../flow-designer) - Flow 核心数据模型
+- [@workspace/flow-runtime](../../flow-runtime) - Flow 执行引擎
+- [@workspace/flow-ui](../../flow) - Flow React UI 组件

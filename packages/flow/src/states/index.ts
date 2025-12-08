@@ -6,11 +6,6 @@
 
 export {
   useFlowSchemaStore,
-  findNode,
-  findNodeWithPath,
-  removeNode,
-  cloneNode,
-  createNode,
   type FlowSchemaState,
 } from './flowSchemaStore';
 

@@ -5,7 +5,23 @@
  */
 
 import { useState, useCallback } from 'react';
-import type { FlowType, FlowSchemaType, FlowTriggerType } from '../types';
+import type { FlowSchema, FlowTriggerType } from '@workspace/flow-designer';
+
+// Flow entity type (from backend)
+export interface FlowType {
+  id: string;
+  projectId: string;
+  groupId?: string;
+  title: string;
+  schemaId?: string;
+  publishSchemaId?: string;
+  triggerType?: FlowTriggerType;
+  enabled?: boolean;
+  order?: number;
+  meta?: Record<string, unknown>;
+  createdAt?: Date;
+  updatedAt?: Date;
+}
 
 // ============================================================================
 // Types
@@ -57,8 +73,8 @@ export interface UseFlowsResult {
   deleteFlow: (flowId: string) => Promise<void>;
   
   // Schema operations
-  saveFlowSchema: (flowId: string, schema: FlowSchemaType) => Promise<void>;
-  loadFlowSchema: (flowId: string) => Promise<FlowSchemaType | null>;
+  saveFlowSchema: (flowId: string, schema: FlowSchema) => Promise<void>;
+  loadFlowSchema: (flowId: string) => Promise<FlowSchema | null>;
   
   // Flow actions
   publishFlow: (flowId: string) => Promise<FlowType>;
@@ -218,7 +234,7 @@ export function useFlows(config: FlowApiConfig): UseFlowsResult {
 
   // Save flow schema
   const saveFlowSchema = useCallback(
-    async (flowId: string, schema: FlowSchemaType): Promise<void> => {
+    async (flowId: string, schema: FlowSchema): Promise<void> => {
       setLoading(true);
       setError(null);
       try {
@@ -238,12 +254,12 @@ export function useFlows(config: FlowApiConfig): UseFlowsResult {
 
   // Load flow schema
   const loadFlowSchema = useCallback(
-    async (flowId: string): Promise<FlowSchemaType | null> => {
+    async (flowId: string): Promise<FlowSchema | null> => {
       setLoading(true);
       setError(null);
       try {
         const flow = await apiCall<FlowType>('GET', `/flows/${flowId}`);
-        return (flow.meta?.schema as FlowSchemaType) || null;
+        return (flow.meta?.schema as FlowSchema) || null;
       } catch (err) {
         const error = err instanceof Error ? err : new Error('Unknown error');
         setError(error);

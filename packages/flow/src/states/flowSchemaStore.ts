@@ -1,22 +1,23 @@
 /**
  * Flow Schema Store
  * Zustand store for managing flow schema state
+ * Uses FlowGraph from @workspace/flow-designer
  * @module states/flowSchemaStore
  */
 
 import { create } from 'zustand';
 import { immer } from 'zustand/middleware/immer';
-import { nanoid } from 'nanoid';
 import type {
-  FlowSchemaType,
-  FlowNodeType,
-  FlowConditionNodeType,
-  FlowNodeTypes,
-  FlowNodePropsType,
-  NodePath,
-  NodeWithPath,
+  FlowSchema,
+  NodeData,
+  EdgeData,
+  NodePosition,
+} from '@workspace/flow-designer';
+import type {
   DesignerMode,
   DesignerConfig,
+  NodeSelectionState,
+  ViewportState,
 } from '../types';
 
 // ============================================================================
@@ -25,210 +26,98 @@ import type {
 
 export interface FlowSchemaState {
   // Schema state
-  schema: FlowSchemaType | null;
-  originalSchema: FlowSchemaType | null;
+  schema: FlowSchema | null;
+  originalSchema: FlowSchema | null;
   isDirty: boolean;
 
   // Selection state
-  selectedNodeId: string | null;
-  selectedNodePath: NodePath;
+  selection: NodeSelectionState;
   hoveredNodeId: string | null;
+  hoveredEdgeId: string | null;
+
+  // Viewport state
+  viewport: ViewportState;
 
   // UI state
   mode: DesignerMode;
-  zoom: number;
-  panOffset: { x: number; y: number };
 
   // Config
   config: DesignerConfig;
 
   // Actions - Schema
-  setSchema: (schema: FlowSchemaType | null) => void;
+  setSchema: (schema: FlowSchema | null) => void;
   resetSchema: () => void;
   markDirty: () => void;
   markClean: () => void;
+  updateSchema: (updates: Partial<FlowSchema>) => void;
 
   // Actions - Node CRUD
-  addNode: (parentId: string, node: Partial<FlowNodeType>, index?: number) => string;
-  updateNode: (nodeId: string, updates: Partial<FlowNodeType>) => void;
-  updateNodeProps: (nodeId: string, props: Partial<FlowNodePropsType>) => void;
+  addNode: (node: NodeData) => void;
+  updateNode: (nodeId: string, updates: Partial<NodeData>) => void;
+  updateNodeConfig: (nodeId: string, config: Record<string, unknown>) => void;
+  moveNode: (nodeId: string, position: NodePosition) => void;
   deleteNode: (nodeId: string) => void;
-  moveNode: (nodeId: string, newParentId: string, newIndex: number) => void;
   duplicateNode: (nodeId: string) => string | null;
 
-  // Actions - Condition branches (for IF nodes)
-  addConditionBranch: (ifNodeId: string, branch?: Partial<FlowConditionNodeType>) => string;
-  updateConditionBranch: (ifNodeId: string, branchId: string, updates: Partial<FlowConditionNodeType>) => void;
-  deleteConditionBranch: (ifNodeId: string, branchId: string) => void;
-  moveConditionBranch: (ifNodeId: string, branchId: string, newIndex: number) => void;
+  // Actions - Edge CRUD
+  addEdge: (edge: EdgeData) => void;
+  updateEdge: (edgeId: string, updates: Partial<EdgeData>) => void;
+  deleteEdge: (edgeId: string) => void;
 
   // Actions - Selection
-  selectNode: (nodeId: string | null) => void;
-  setHoveredNode: (nodeId: string | null) => void;
+  selectNode: (nodeId: string, addToSelection?: boolean) => void;
+  selectNodes: (nodeIds: string[]) => void;
+  deselectNode: (nodeId: string) => void;
   clearSelection: () => void;
+  setHoveredNode: (nodeId: string | null) => void;
+  setHoveredEdge: (edgeId: string | null) => void;
+
+  // Actions - Viewport
+  setZoom: (zoom: number) => void;
+  setPan: (panX: number, panY: number) => void;
+  resetViewport: () => void;
 
   // Actions - UI
   setMode: (mode: DesignerMode) => void;
-  setZoom: (zoom: number) => void;
-  setPanOffset: (offset: { x: number; y: number }) => void;
   setConfig: (config: Partial<DesignerConfig>) => void;
 
   // Getters
-  getNode: (nodeId: string) => FlowNodeType | null;
-  getNodeWithPath: (nodeId: string) => NodeWithPath | null;
-  getSelectedNode: () => FlowNodeType | null;
-  getParentNode: (nodeId: string) => FlowNodeType | null;
-  getNodePath: (nodeId: string) => NodePath;
+  getNode: (nodeId: string) => NodeData | undefined;
+  getEdge: (edgeId: string) => EdgeData | undefined;
+  getSelectedNodes: () => NodeData[];
+  getConnectedEdges: (nodeId: string) => EdgeData[];
+  getIncomingEdges: (nodeId: string) => EdgeData[];
+  getOutgoingEdges: (nodeId: string) => EdgeData[];
 }
 
 // ============================================================================
-// Helper Functions
+// Default Values
 // ============================================================================
 
-/**
- * Find a node by ID in the schema tree
- */
-function findNode(
-  node: FlowNodeType | FlowSchemaType | null,
-  nodeId: string
-): FlowNodeType | null {
-  if (!node) return null;
-  if (node.id === nodeId) return node as FlowNodeType;
+const DEFAULT_VIEWPORT: ViewportState = {
+  zoom: 1,
+  panX: 0,
+  panY: 0,
+};
 
-  // Search in actions
-  if (node.actions) {
-    for (const action of node.actions) {
-      const found = findNode(action, nodeId);
-      if (found) return found;
-    }
-  }
+const DEFAULT_SELECTION: NodeSelectionState = {
+  selectedIds: [],
+  lastSelectedId: null,
+};
 
-  // Search in conditions (for IF nodes)
-  if ('conditions' in node && node.conditions) {
-    for (const condition of node.conditions) {
-      if (condition.id === nodeId) return condition as unknown as FlowNodeType;
-      const found = findNode(condition as unknown as FlowNodeType, nodeId);
-      if (found) return found;
-    }
-  }
-
-  return null;
-}
-
-/**
- * Find a node with its path
- */
-function findNodeWithPath(
-  node: FlowNodeType | FlowSchemaType | null,
-  nodeId: string,
-  path: NodePath = [],
-  parent?: FlowNodeType
-): NodeWithPath | null {
-  if (!node) return null;
-  if (node.id === nodeId) {
-    return { node: node as FlowNodeType, path, parent };
-  }
-
-  // Search in actions
-  if (node.actions) {
-    for (const action of node.actions) {
-      const found = findNodeWithPath(action, nodeId, [...path, node.id], node as FlowNodeType);
-      if (found) return found;
-    }
-  }
-
-  // Search in conditions
-  if ('conditions' in node && node.conditions) {
-    for (const condition of node.conditions) {
-      if (condition.id === nodeId) {
-        return { node: condition as unknown as FlowNodeType, path: [...path, node.id], parent: node as FlowNodeType };
-      }
-      const found = findNodeWithPath(condition as unknown as FlowNodeType, nodeId, [...path, node.id], node as FlowNodeType);
-      if (found) return found;
-    }
-  }
-
-  return null;
-}
-
-/**
- * Remove a node from the schema tree
- */
-function removeNode(
-  node: FlowNodeType | FlowSchemaType,
-  nodeId: string
-): boolean {
-  // Check actions
-  if (node.actions) {
-    const index = node.actions.findIndex((a) => a.id === nodeId);
-    if (index !== -1) {
-      node.actions.splice(index, 1);
-      return true;
-    }
-    for (const action of node.actions) {
-      if (removeNode(action, nodeId)) return true;
-    }
-  }
-
-  // Check conditions
-  if ('conditions' in node && node.conditions) {
-    const index = node.conditions.findIndex((c) => c.id === nodeId);
-    if (index !== -1) {
-      node.conditions.splice(index, 1);
-      return true;
-    }
-    for (const condition of node.conditions) {
-      if (removeNode(condition as unknown as FlowNodeType, nodeId)) return true;
-    }
-  }
-
-  return false;
-}
-
-/**
- * Deep clone a node
- */
-function cloneNode(node: FlowNodeType): FlowNodeType {
-  const cloned: FlowNodeType = {
-    ...node,
-    id: nanoid(),
-    props: node.props ? { ...node.props } : undefined,
-    actions: node.actions?.map(cloneNode),
-    conditions: node.conditions?.map((c) => ({
-      ...c,
-      id: nanoid(),
-      props: c.props ? { ...c.props } : undefined,
-      actions: c.actions.map(cloneNode),
-    })),
-  };
-  return cloned;
-}
-
-/**
- * Create a new node with default values
- */
-function createNode(nodeType: FlowNodeTypes, props?: Partial<FlowNodePropsType>): FlowNodeType {
-  return {
-    id: nanoid(),
-    actionType: nodeType,
-    props: props as FlowNodePropsType,
-    actions: nodeType === FlowNodeTypes.IF ? undefined : [],
-    conditions: nodeType === FlowNodeTypes.IF ? [
-      {
-        id: nanoid(),
-        actionType: FlowNodeTypes.CONDITION,
-        props: { title: '条件 1' },
-        actions: [],
-      },
-      {
-        id: nanoid(),
-        actionType: FlowNodeTypes.CONDITION,
-        props: { title: '默认' },
-        actions: [],
-      },
-    ] : undefined,
-  };
-}
+const DEFAULT_CONFIG: DesignerConfig = {
+  mode: 'edit',
+  enableHistory: true,
+  maxHistorySteps: 50,
+  enableZoom: true,
+  minZoom: 0.25,
+  maxZoom: 2,
+  enableMinimap: false,
+  enableGrid: true,
+  gridSize: 20,
+  snapToGrid: true,
+  enableMultiSelect: true,
+};
 
 // ============================================================================
 // Store Implementation
@@ -240,18 +129,12 @@ export const useFlowSchemaStore = create<FlowSchemaState>()(
     schema: null,
     originalSchema: null,
     isDirty: false,
-    selectedNodeId: null,
-    selectedNodePath: [],
+    selection: DEFAULT_SELECTION,
     hoveredNodeId: null,
+    hoveredEdgeId: null,
+    viewport: DEFAULT_VIEWPORT,
     mode: 'edit',
-    zoom: 1,
-    panOffset: { x: 0, y: 0 },
-    config: {
-      enableHistory: true,
-      maxHistorySteps: 50,
-      enableZoom: true,
-      enableMinimap: false,
-    },
+    config: DEFAULT_CONFIG,
 
     // Schema actions
     setSchema: (schema) =>
@@ -259,8 +142,7 @@ export const useFlowSchemaStore = create<FlowSchemaState>()(
         state.schema = schema;
         state.originalSchema = schema ? JSON.parse(JSON.stringify(schema)) : null;
         state.isDirty = false;
-        state.selectedNodeId = null;
-        state.selectedNodePath = [];
+        state.selection = DEFAULT_SELECTION;
       }),
 
     resetSchema: () =>
@@ -284,214 +166,156 @@ export const useFlowSchemaStore = create<FlowSchemaState>()(
         }
       }),
 
-    // Node CRUD actions
-    addNode: (parentId, nodeData, index) => {
-      const newId = nanoid();
+    updateSchema: (updates) =>
       set((state) => {
         if (!state.schema) return;
-
-        const parent = findNode(state.schema, parentId);
-        if (!parent) return;
-
-        const newNode: FlowNodeType = {
-          id: newId,
-          actionType: nodeData.actionType || FlowNodeTypes.EVENT,
-          props: nodeData.props,
-          actions: nodeData.actions || [],
-          conditions: nodeData.conditions,
-          ...nodeData,
-        };
-
-        if (!parent.actions) {
-          parent.actions = [];
-        }
-
-        if (index !== undefined && index >= 0 && index <= parent.actions.length) {
-          parent.actions.splice(index, 0, newNode);
-        } else {
-          parent.actions.push(newNode);
-        }
-
+        Object.assign(state.schema, updates);
         state.isDirty = true;
-      });
-      return newId;
-    },
+      }),
+
+    // Node CRUD
+    addNode: (node) =>
+      set((state) => {
+        if (!state.schema) return;
+        state.schema.nodes.push(node);
+        state.isDirty = true;
+      }),
 
     updateNode: (nodeId, updates) =>
       set((state) => {
         if (!state.schema) return;
-
-        const node = findNode(state.schema, nodeId);
-        if (!node) return;
-
-        Object.assign(node, updates);
+        const index = state.schema.nodes.findIndex((n) => n.id === nodeId);
+        if (index === -1) return;
+        Object.assign(state.schema.nodes[index], updates);
         state.isDirty = true;
       }),
 
-    updateNodeProps: (nodeId, props) =>
+    updateNodeConfig: (nodeId, config) =>
       set((state) => {
         if (!state.schema) return;
-
-        const node = findNode(state.schema, nodeId);
+        const node = state.schema.nodes.find((n) => n.id === nodeId);
         if (!node) return;
+        node.config = { ...node.config, ...config };
+        state.isDirty = true;
+      }),
 
-        node.props = { ...node.props, ...props } as FlowNodePropsType;
+    moveNode: (nodeId, position) =>
+      set((state) => {
+        if (!state.schema) return;
+        const node = state.schema.nodes.find((n) => n.id === nodeId);
+        if (!node) return;
+        node.position = position;
         state.isDirty = true;
       }),
 
     deleteNode: (nodeId) =>
       set((state) => {
         if (!state.schema) return;
-
-        const removed = removeNode(state.schema, nodeId);
-        if (removed) {
-          state.isDirty = true;
-          if (state.selectedNodeId === nodeId) {
-            state.selectedNodeId = null;
-            state.selectedNodePath = [];
-          }
+        // Remove node
+        state.schema.nodes = state.schema.nodes.filter((n) => n.id !== nodeId);
+        // Remove connected edges
+        state.schema.edges = state.schema.edges.filter(
+          (e) => e.sourceId !== nodeId && e.targetId !== nodeId
+        );
+        // Update selection
+        state.selection.selectedIds = state.selection.selectedIds.filter((id) => id !== nodeId);
+        if (state.selection.lastSelectedId === nodeId) {
+          state.selection.lastSelectedId = state.selection.selectedIds[0] || null;
         }
-      }),
-
-    moveNode: (nodeId, newParentId, newIndex) =>
-      set((state) => {
-        if (!state.schema) return;
-
-        // Find and remove the node
-        const nodeWithPath = findNodeWithPath(state.schema, nodeId);
-        if (!nodeWithPath) return;
-
-        const nodeCopy = JSON.parse(JSON.stringify(nodeWithPath.node));
-        removeNode(state.schema, nodeId);
-
-        // Add to new parent
-        const newParent = findNode(state.schema, newParentId);
-        if (!newParent) return;
-
-        if (!newParent.actions) {
-          newParent.actions = [];
-        }
-
-        newParent.actions.splice(newIndex, 0, nodeCopy);
         state.isDirty = true;
       }),
 
     duplicateNode: (nodeId) => {
-      let newId: string | null = null;
-      set((state) => {
-        if (!state.schema) return;
+      const state = get();
+      if (!state.schema) return null;
 
-        const nodeWithPath = findNodeWithPath(state.schema, nodeId);
-        if (!nodeWithPath || !nodeWithPath.parent) return;
+      const node = state.schema.nodes.find((n) => n.id === nodeId);
+      if (!node) return null;
 
-        const parent = nodeWithPath.parent;
-        const cloned = cloneNode(nodeWithPath.node);
-        newId = cloned.id;
+      const newId = `${node.id}-copy-${Date.now()}`;
+      const newNode: NodeData = {
+        ...JSON.parse(JSON.stringify(node)),
+        id: newId,
+        label: `${node.label} (copy)`,
+        position: {
+          x: node.position.x + 50,
+          y: node.position.y + 50,
+        },
+      };
 
-        if (!parent.actions) {
-          parent.actions = [];
-        }
-
-        const index = parent.actions.findIndex((a) => a.id === nodeId);
-        if (index !== -1) {
-          parent.actions.splice(index + 1, 0, cloned);
-        } else {
-          parent.actions.push(cloned);
-        }
-
-        state.isDirty = true;
+      set((s) => {
+        if (!s.schema) return;
+        s.schema.nodes.push(newNode);
+        s.isDirty = true;
       });
+
       return newId;
     },
 
-    // Condition branch actions
-    addConditionBranch: (ifNodeId, branch) => {
-      const newId = nanoid();
+    // Edge CRUD
+    addEdge: (edge) =>
       set((state) => {
         if (!state.schema) return;
-
-        const ifNode = findNode(state.schema, ifNodeId);
-        if (!ifNode || ifNode.actionType !== FlowNodeTypes.IF) return;
-
-        if (!ifNode.conditions) {
-          ifNode.conditions = [];
-        }
-
-        const newBranch: FlowConditionNodeType = {
-          id: newId,
-          actionType: FlowNodeTypes.CONDITION,
-          props: branch?.props || { title: `条件 ${ifNode.conditions.length + 1}` },
-          actions: branch?.actions || [],
-        };
-
-        // Insert before the last (default) branch
-        const insertIndex = Math.max(0, ifNode.conditions.length - 1);
-        ifNode.conditions.splice(insertIndex, 0, newBranch);
-        state.isDirty = true;
-      });
-      return newId;
-    },
-
-    updateConditionBranch: (ifNodeId, branchId, updates) =>
-      set((state) => {
-        if (!state.schema) return;
-
-        const ifNode = findNode(state.schema, ifNodeId);
-        if (!ifNode || !ifNode.conditions) return;
-
-        const branch = ifNode.conditions.find((c) => c.id === branchId);
-        if (!branch) return;
-
-        Object.assign(branch, updates);
-        state.isDirty = true;
-      }),
-
-    deleteConditionBranch: (ifNodeId, branchId) =>
-      set((state) => {
-        if (!state.schema) return;
-
-        const ifNode = findNode(state.schema, ifNodeId);
-        if (!ifNode || !ifNode.conditions) return;
-
-        // Don't delete if only 2 branches left (need at least one condition + default)
-        if (ifNode.conditions.length <= 2) return;
-
-        const index = ifNode.conditions.findIndex((c) => c.id === branchId);
-        if (index !== -1 && index < ifNode.conditions.length - 1) {
-          ifNode.conditions.splice(index, 1);
+        // Check if edge already exists
+        const exists = state.schema.edges.some(
+          (e) =>
+            e.sourceId === edge.sourceId &&
+            e.sourcePort === edge.sourcePort &&
+            e.targetId === edge.targetId &&
+            e.targetPort === edge.targetPort
+        );
+        if (!exists) {
+          state.schema.edges.push(edge);
           state.isDirty = true;
         }
       }),
 
-    moveConditionBranch: (ifNodeId, branchId, newIndex) =>
+    updateEdge: (edgeId, updates) =>
       set((state) => {
         if (!state.schema) return;
+        const index = state.schema.edges.findIndex((e) => e.id === edgeId);
+        if (index === -1) return;
+        Object.assign(state.schema.edges[index], updates);
+        state.isDirty = true;
+      }),
 
-        const ifNode = findNode(state.schema, ifNodeId);
-        if (!ifNode || !ifNode.conditions) return;
-
-        const currentIndex = ifNode.conditions.findIndex((c) => c.id === branchId);
-        if (currentIndex === -1) return;
-
-        // Don't move the default branch (last one)
-        if (currentIndex === ifNode.conditions.length - 1) return;
-        if (newIndex >= ifNode.conditions.length - 1) return;
-
-        const [branch] = ifNode.conditions.splice(currentIndex, 1);
-        ifNode.conditions.splice(newIndex, 0, branch);
+    deleteEdge: (edgeId) =>
+      set((state) => {
+        if (!state.schema) return;
+        state.schema.edges = state.schema.edges.filter((e) => e.id !== edgeId);
         state.isDirty = true;
       }),
 
     // Selection actions
-    selectNode: (nodeId) =>
+    selectNode: (nodeId, addToSelection = false) =>
       set((state) => {
-        state.selectedNodeId = nodeId;
-        if (nodeId && state.schema) {
-          const nodeWithPath = findNodeWithPath(state.schema, nodeId);
-          state.selectedNodePath = nodeWithPath?.path || [];
+        if (addToSelection && state.config.enableMultiSelect) {
+          if (!state.selection.selectedIds.includes(nodeId)) {
+            state.selection.selectedIds.push(nodeId);
+          }
         } else {
-          state.selectedNodePath = [];
+          state.selection.selectedIds = [nodeId];
         }
+        state.selection.lastSelectedId = nodeId;
+      }),
+
+    selectNodes: (nodeIds) =>
+      set((state) => {
+        state.selection.selectedIds = nodeIds;
+        state.selection.lastSelectedId = nodeIds[nodeIds.length - 1] || null;
+      }),
+
+    deselectNode: (nodeId) =>
+      set((state) => {
+        state.selection.selectedIds = state.selection.selectedIds.filter((id) => id !== nodeId);
+        if (state.selection.lastSelectedId === nodeId) {
+          state.selection.lastSelectedId = state.selection.selectedIds[0] || null;
+        }
+      }),
+
+    clearSelection: () =>
+      set((state) => {
+        state.selection = DEFAULT_SELECTION;
       }),
 
     setHoveredNode: (nodeId) =>
@@ -499,26 +323,33 @@ export const useFlowSchemaStore = create<FlowSchemaState>()(
         state.hoveredNodeId = nodeId;
       }),
 
-    clearSelection: () =>
+    setHoveredEdge: (edgeId) =>
       set((state) => {
-        state.selectedNodeId = null;
-        state.selectedNodePath = [];
+        state.hoveredEdgeId = edgeId;
+      }),
+
+    // Viewport actions
+    setZoom: (zoom) =>
+      set((state) => {
+        const { minZoom = 0.25, maxZoom = 2 } = state.config;
+        state.viewport.zoom = Math.max(minZoom, Math.min(maxZoom, zoom));
+      }),
+
+    setPan: (panX, panY) =>
+      set((state) => {
+        state.viewport.panX = panX;
+        state.viewport.panY = panY;
+      }),
+
+    resetViewport: () =>
+      set((state) => {
+        state.viewport = DEFAULT_VIEWPORT;
       }),
 
     // UI actions
     setMode: (mode) =>
       set((state) => {
         state.mode = mode;
-      }),
-
-    setZoom: (zoom) =>
-      set((state) => {
-        state.zoom = Math.max(0.25, Math.min(2, zoom));
-      }),
-
-    setPanOffset: (offset) =>
-      set((state) => {
-        state.panOffset = offset;
       }),
 
     setConfig: (config) =>
@@ -529,42 +360,40 @@ export const useFlowSchemaStore = create<FlowSchemaState>()(
     // Getters
     getNode: (nodeId) => {
       const state = get();
-      if (!state.schema) return null;
-      return findNode(state.schema, nodeId);
+      return state.schema?.nodes.find((n) => n.id === nodeId);
     },
 
-    getNodeWithPath: (nodeId) => {
+    getEdge: (edgeId) => {
       const state = get();
-      if (!state.schema) return null;
-      return findNodeWithPath(state.schema, nodeId);
+      return state.schema?.edges.find((e) => e.id === edgeId);
     },
 
-    getSelectedNode: () => {
-      const state = get();
-      if (!state.schema || !state.selectedNodeId) return null;
-      return findNode(state.schema, state.selectedNodeId);
-    },
-
-    getParentNode: (nodeId) => {
-      const state = get();
-      if (!state.schema) return null;
-      const nodeWithPath = findNodeWithPath(state.schema, nodeId);
-      return nodeWithPath?.parent || null;
-    },
-
-    getNodePath: (nodeId) => {
+    getSelectedNodes: () => {
       const state = get();
       if (!state.schema) return [];
-      const nodeWithPath = findNodeWithPath(state.schema, nodeId);
-      return nodeWithPath?.path || [];
+      return state.schema.nodes.filter((n) => state.selection.selectedIds.includes(n.id));
+    },
+
+    getConnectedEdges: (nodeId) => {
+      const state = get();
+      if (!state.schema) return [];
+      return state.schema.edges.filter(
+        (e) => e.sourceId === nodeId || e.targetId === nodeId
+      );
+    },
+
+    getIncomingEdges: (nodeId) => {
+      const state = get();
+      if (!state.schema) return [];
+      return state.schema.edges.filter((e) => e.targetId === nodeId);
+    },
+
+    getOutgoingEdges: (nodeId) => {
+      const state = get();
+      if (!state.schema) return [];
+      return state.schema.edges.filter((e) => e.sourceId === nodeId);
     },
   }))
 );
-
-// ============================================================================
-// Utility Exports
-// ============================================================================
-
-export { findNode, findNodeWithPath, removeNode, cloneNode, createNode };
 
 export default useFlowSchemaStore;

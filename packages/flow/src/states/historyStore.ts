@@ -5,7 +5,7 @@
  */
 
 import { create } from 'zustand';
-import type { FlowSchemaType } from '../types';
+import type { FlowSchema } from '@workspace/flow-designer';
 
 // ============================================================================
 // Types
@@ -13,7 +13,7 @@ import type { FlowSchemaType } from '../types';
 
 export interface HistoryEntry {
   /** Schema snapshot */
-  schema: FlowSchemaType;
+  schema: FlowSchema;
   /** Timestamp */
   timestamp: number;
   /** Description of the change */
@@ -29,9 +29,9 @@ export interface HistoryState {
   maxLength: number;
 
   // Actions
-  push: (schema: FlowSchemaType, description?: string) => void;
-  undo: () => FlowSchemaType | null;
-  redo: () => FlowSchemaType | null;
+  push: (schema: FlowSchema, description?: string) => void;
+  undo: () => FlowSchema | null;
+  redo: () => FlowSchema | null;
   clear: () => void;
   setMaxLength: (length: number) => void;
 

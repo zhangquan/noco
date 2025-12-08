@@ -1,7 +1,7 @@
 {
-  "name": "@workspace/flow",
+  "name": "@workspace/flow-ui",
   "version": "1.0.0",
-  "description": "FlowSDK - React-based workflow/logic flow editor framework",
+  "description": "FlowSDK UI - React-based workflow/logic flow editor UI components",
   "type": "module",
   "main": "./dist/index.js",
   "module": "./dist/index.js",
@@ -24,6 +24,7 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
+    "@workspace/flow-designer": "workspace:*",
     "@ant-design/icons": "^5.2.6",
     "antd": "^5.12.0",
     "i18next": "^23.7.6",
