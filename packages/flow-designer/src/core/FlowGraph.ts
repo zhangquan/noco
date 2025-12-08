@@ -1,12 +1,12 @@
 /**
  * Flow Graph Class
  * Main class for managing flow graphs with nodes and edges
- * @module flow-designer/core/FlowGraph
+ * @module core/FlowGraph
  */
 
 import { ulid } from 'ulid';
-import { Node } from './Node.js';
-import { Edge } from './Edge.js';
+import { Node } from './Node';
+import { Edge } from './Edge';
 import type {
   FlowSchema,
   FlowTriggerType,
@@ -23,7 +23,7 @@ import type {
   EdgeData,
   NodePosition,
   NodeDefinition,
-} from '../types/index.js';
+} from '../types';
 
 // ============================================================================
 // Types

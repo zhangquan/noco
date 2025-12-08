@@ -1,0 +1,253 @@
+/**
+ * FlowRender Styles
+ */
+
+.flow-render {
+  position: relative;
+  width: 100%;
+  min-height: 400px;
+  padding: 24px;
+  background: #fafafa;
+  overflow: auto;
+
+  &--empty {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+
+  &__container {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 16px;
+    min-width: fit-content;
+  }
+
+  &__empty-state {
+    text-align: center;
+    color: rgba(0, 0, 0, 0.45);
+    
+    p {
+      margin: 0;
+      font-size: 14px;
+    }
+  }
+
+  // Root node
+  &__root {
+    display: flex;
+    justify-content: center;
+  }
+
+  // Actions container
+  &__actions {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 0;
+    position: relative;
+  }
+
+  &__root-actions {
+    position: relative;
+
+    &::before {
+      content: '';
+      position: absolute;
+      top: -16px;
+      left: 50%;
+      width: 2px;
+      height: 16px;
+      background: #d9d9d9;
+      transform: translateX(-50%);
+    }
+  }
+
+  // Action item
+  &__action-item {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    position: relative;
+  }
+
+  // Node wrapper
+  &__node-wrapper {
+    position: relative;
+  }
+
+  // Connector line between nodes
+  &__connector {
+    width: 2px;
+    height: 16px;
+    background: #d9d9d9;
+    margin: 0 auto;
+  }
+
+  // IF conditions layout
+  &__conditions {
+    display: flex;
+    gap: 24px;
+    margin-top: 16px;
+    padding: 16px;
+    background: rgba(0, 0, 0, 0.02);
+    border-radius: 8px;
+    position: relative;
+
+    &::before {
+      content: '';
+      position: absolute;
+      top: -16px;
+      left: 50%;
+      width: 2px;
+      height: 16px;
+      background: #d9d9d9;
+      transform: translateX(-50%);
+    }
+  }
+
+  // Condition branch
+  &__condition-branch {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    min-width: 200px;
+    padding: 12px;
+    background: #fff;
+    border: 1px solid #e8e8e8;
+    border-radius: 8px;
+
+    &:first-child {
+      border-color: #91caff;
+    }
+
+    &:last-child {
+      border-color: #d9d9d9;
+      background: #fafafa;
+    }
+  }
+
+  &__condition-header {
+    margin-bottom: 12px;
+  }
+
+  &__condition-actions {
+    position: relative;
+    padding-top: 16px;
+
+    &::before {
+      content: '';
+      position: absolute;
+      top: 0;
+      left: 50%;
+      width: 2px;
+      height: 16px;
+      background: #d9d9d9;
+      transform: translateX(-50%);
+    }
+  }
+
+  // Loop body
+  &__loop-body {
+    margin-top: 16px;
+    padding: 16px;
+    background: rgba(114, 46, 209, 0.04);
+    border: 1px dashed #d3adf7;
+    border-radius: 8px;
+    min-width: 200px;
+
+    &::before {
+      content: '';
+      display: block;
+      width: 2px;
+      height: 16px;
+      background: #d9d9d9;
+      margin: -32px auto 16px;
+    }
+  }
+
+  // Add button wrapper
+  &__add-wrapper {
+    display: flex;
+    justify-content: center;
+    margin: 8px 0;
+    position: relative;
+
+    &--empty {
+      padding: 16px;
+    }
+
+    &--root {
+      margin-top: 16px;
+
+      &::before {
+        content: '';
+        position: absolute;
+        top: -16px;
+        left: 50%;
+        width: 2px;
+        height: 16px;
+        background: #d9d9d9;
+        transform: translateX(-50%);
+      }
+    }
+  }
+}
+
+// Horizontal connector for condition branches
+.flow-render__conditions {
+  &::after {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 50px;
+    right: 50px;
+    height: 2px;
+    background: #d9d9d9;
+  }
+}
+
+// Animation for node hover
+.flow-render__node-wrapper {
+  transition: transform 0.2s ease;
+
+  &:hover {
+    transform: translateY(-2px);
+  }
+}
+
+// Dark mode support (optional)
+.flow-render--dark {
+  background: #1f1f1f;
+
+  .flow-render__connector,
+  .flow-render__root-actions::before,
+  .flow-render__conditions::before,
+  .flow-render__condition-actions::before,
+  .flow-render__add-wrapper--root::before {
+    background: #434343;
+  }
+
+  .flow-render__conditions {
+    background: rgba(255, 255, 255, 0.02);
+
+    &::after {
+      background: #434343;
+    }
+  }
+
+  .flow-render__condition-branch {
+    background: #262626;
+    border-color: #434343;
+
+    &:last-child {
+      background: #1f1f1f;
+    }
+  }
+
+  .flow-render__loop-body {
+    background: rgba(114, 46, 209, 0.08);
+    border-color: rgba(114, 46, 209, 0.3);
+  }
+}

@@ -1,0 +1,96 @@
+{
+  "flow": {
+    "designer": {
+      "title": "流程设计器",
+      "save": "保存",
+      "publish": "发布",
+      "undo": "撤销",
+      "redo": "重做",
+      "zoomIn": "放大",
+      "zoomOut": "缩小",
+      "fitView": "适应视图",
+      "preview": "预览",
+      "export": "导出",
+      "import": "导入"
+    },
+    "nodes": {
+      "event": "事件触发",
+      "dataList": "查询数据",
+      "dataInsert": "插入数据",
+      "dataUpdate": "更新数据",
+      "dataDelete": "删除数据",
+      "if": "条件判断",
+      "condition": "条件分支",
+      "loop": "循环",
+      "var": "设置变量",
+      "fn": "函数",
+      "http": "HTTP 请求",
+      "delay": "延时",
+      "end": "结束"
+    },
+    "events": {
+      "insert": "当创建数据时",
+      "update": "当更新数据时",
+      "delete": "当删除数据时",
+      "timer": "定时触发",
+      "webhook": "Webhook 触发",
+      "form": "表单提交时",
+      "manual": "手动触发"
+    },
+    "setter": {
+      "title": "标题",
+      "eventType": "事件类型",
+      "table": "数据表",
+      "view": "视图",
+      "field": "字段",
+      "expression": "表达式",
+      "filters": "筛选条件",
+      "sorts": "排序",
+      "limit": "最大记录数",
+      "rowId": "记录 ID",
+      "body": "数据内容",
+      "variable": "变量",
+      "function": "函数",
+      "url": "URL",
+      "method": "请求方法",
+      "headers": "请求头",
+      "duration": "时长",
+      "unit": "单位"
+    },
+    "actions": {
+      "add": "添加",
+      "delete": "删除",
+      "duplicate": "复制",
+      "move": "移动",
+      "enable": "启用",
+      "disable": "禁用"
+    },
+    "messages": {
+      "saveSuccess": "保存成功",
+      "saveFailed": "保存失败",
+      "publishSuccess": "发布成功",
+      "publishFailed": "发布失败",
+      "deleteConfirm": "确定要删除这个节点吗？",
+      "unsavedChanges": "有未保存的更改，确定要离开吗？"
+    },
+    "empty": {
+      "noSchema": "暂无流程数据",
+      "noNode": "选择一个节点进行编辑",
+      "noTable": "暂无数据表"
+    },
+    "placeholders": {
+      "selectTable": "选择数据表",
+      "selectField": "选择字段",
+      "inputExpression": "输入表达式",
+      "inputTitle": "输入标题",
+      "inputValue": "输入值"
+    },
+    "categories": {
+      "trigger": "触发器",
+      "data": "数据操作",
+      "logic": "逻辑控制",
+      "action": "动作",
+      "advanced": "高级"
+    }
+  }
+}

@@ -1,0 +1,259 @@
+/**
+ * BaseNode Styles
+ */
+
+.flow-node {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  min-width: 240px;
+  max-width: 360px;
+  background: #fff;
+  border: 1px solid #e8e8e8;
+  border-radius: 8px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
+  cursor: pointer;
+  transition: all 0.2s ease;
+  user-select: none;
+
+  &:hover {
+    border-color: #d9d9d9;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
+  }
+
+  &:focus {
+    outline: none;
+  }
+
+  // Color variants
+  &--blue {
+    .flow-node__header {
+      background: linear-gradient(135deg, #e6f4ff 0%, #bae0ff 100%);
+      border-bottom: 1px solid #91caff;
+    }
+    .flow-node__icon {
+      color: #1677ff;
+    }
+  }
+
+  &--green {
+    .flow-node__header {
+      background: linear-gradient(135deg, #f6ffed 0%, #d9f7be 100%);
+      border-bottom: 1px solid #b7eb8f;
+    }
+    .flow-node__icon {
+      color: #52c41a;
+    }
+  }
+
+  &--orange {
+    .flow-node__header {
+      background: linear-gradient(135deg, #fff7e6 0%, #ffd591 100%);
+      border-bottom: 1px solid #ffc069;
+    }
+    .flow-node__icon {
+      color: #fa8c16;
+    }
+  }
+
+  &--red {
+    .flow-node__header {
+      background: linear-gradient(135deg, #fff2f0 0%, #ffccc7 100%);
+      border-bottom: 1px solid #ffa39e;
+    }
+    .flow-node__icon {
+      color: #ff4d4f;
+    }
+  }
+
+  &--purple {
+    .flow-node__header {
+      background: linear-gradient(135deg, #f9f0ff 0%, #efdbff 100%);
+      border-bottom: 1px solid #d3adf7;
+    }
+    .flow-node__icon {
+      color: #722ed1;
+    }
+  }
+
+  &--gray {
+    .flow-node__header {
+      background: linear-gradient(135deg, #fafafa 0%, #f0f0f0 100%);
+      border-bottom: 1px solid #d9d9d9;
+    }
+    .flow-node__icon {
+      color: #8c8c8c;
+    }
+  }
+
+  // States
+  &--selected {
+    border-color: #1677ff;
+    box-shadow: 0 0 0 2px rgba(22, 119, 255, 0.2);
+
+    .flow-node__selection-ring {
+      display: block;
+    }
+  }
+
+  &--hovered:not(&--selected) {
+    border-color: #69b1ff;
+  }
+
+  &--disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+    pointer-events: none;
+  }
+
+  &--node-disabled {
+    opacity: 0.5;
+    
+    &::after {
+      content: '';
+      position: absolute;
+      inset: 0;
+      background: repeating-linear-gradient(
+        -45deg,
+        transparent,
+        transparent 4px,
+        rgba(0, 0, 0, 0.03) 4px,
+        rgba(0, 0, 0, 0.03) 8px
+      );
+      border-radius: 8px;
+      pointer-events: none;
+    }
+  }
+
+  // Header
+  &__header {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 10px 12px;
+    border-radius: 8px 8px 0 0;
+  }
+
+  &__icon {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 24px;
+    height: 24px;
+    font-size: 16px;
+  }
+
+  &__title {
+    flex: 1;
+    font-size: 14px;
+    font-weight: 500;
+    color: rgba(0, 0, 0, 0.88);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  &__type {
+    font-size: 12px;
+    color: rgba(0, 0, 0, 0.45);
+    background: rgba(0, 0, 0, 0.04);
+    padding: 2px 6px;
+    border-radius: 4px;
+  }
+
+  &__actions {
+    display: flex;
+    gap: 4px;
+    margin-left: auto;
+
+    .ant-btn-icon-only {
+      width: 24px;
+      height: 24px;
+      padding: 0;
+      font-size: 12px;
+    }
+  }
+
+  // Content
+  &__content {
+    padding: 12px;
+    font-size: 13px;
+    color: rgba(0, 0, 0, 0.65);
+    line-height: 1.5;
+  }
+
+  // Footer
+  &__footer {
+    padding: 8px 12px;
+    border-top: 1px solid #f0f0f0;
+    font-size: 12px;
+    color: rgba(0, 0, 0, 0.45);
+  }
+
+  // Selection ring
+  &__selection-ring {
+    display: none;
+    position: absolute;
+    inset: -3px;
+    border: 2px solid #1677ff;
+    border-radius: 10px;
+    pointer-events: none;
+    animation: pulse 1.5s ease-in-out infinite;
+  }
+}
+
+// Animation
+@keyframes pulse {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.6;
+  }
+}
+
+// Node connector lines
+.flow-node-connector {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+
+  &::before {
+    content: '';
+    position: absolute;
+    top: -16px;
+    left: 50%;
+    width: 2px;
+    height: 16px;
+    background: #d9d9d9;
+    transform: translateX(-50%);
+  }
+
+  &:first-child::before {
+    display: none;
+  }
+}
+
+// Add node button
+.flow-add-node-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  margin: 8px auto;
+  background: #fff;
+  border: 1px dashed #d9d9d9;
+  border-radius: 50%;
+  color: #8c8c8c;
+  cursor: pointer;
+  transition: all 0.2s;
+
+  &:hover {
+    border-color: #1677ff;
+    color: #1677ff;
+    transform: scale(1.1);
+  }
+}

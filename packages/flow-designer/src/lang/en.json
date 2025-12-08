@@ -1,0 +1,96 @@
+{
+  "flow": {
+    "designer": {
+      "title": "Flow Designer",
+      "save": "Save",
+      "publish": "Publish",
+      "undo": "Undo",
+      "redo": "Redo",
+      "zoomIn": "Zoom In",
+      "zoomOut": "Zoom Out",
+      "fitView": "Fit View",
+      "preview": "Preview",
+      "export": "Export",
+      "import": "Import"
+    },
+    "nodes": {
+      "event": "Event Trigger",
+      "dataList": "Query Data",
+      "dataInsert": "Insert Data",
+      "dataUpdate": "Update Data",
+      "dataDelete": "Delete Data",
+      "if": "Condition",
+      "condition": "Branch",
+      "loop": "Loop",
+      "var": "Set Variable",
+      "fn": "Function",
+      "http": "HTTP Request",
+      "delay": "Delay",
+      "end": "End"
+    },
+    "events": {
+      "insert": "When data is created",
+      "update": "When data is updated",
+      "delete": "When data is deleted",
+      "timer": "On schedule",
+      "webhook": "On webhook",
+      "form": "On form submit",
+      "manual": "Manual trigger"
+    },
+    "setter": {
+      "title": "Title",
+      "eventType": "Event Type",
+      "table": "Table",
+      "view": "View",
+      "field": "Field",
+      "expression": "Expression",
+      "filters": "Filters",
+      "sorts": "Sort",
+      "limit": "Limit",
+      "rowId": "Row ID",
+      "body": "Body",
+      "variable": "Variable",
+      "function": "Function",
+      "url": "URL",
+      "method": "Method",
+      "headers": "Headers",
+      "duration": "Duration",
+      "unit": "Unit"
+    },
+    "actions": {
+      "add": "Add",
+      "delete": "Delete",
+      "duplicate": "Duplicate",
+      "move": "Move",
+      "enable": "Enable",
+      "disable": "Disable"
+    },
+    "messages": {
+      "saveSuccess": "Saved successfully",
+      "saveFailed": "Failed to save",
+      "publishSuccess": "Published successfully",
+      "publishFailed": "Failed to publish",
+      "deleteConfirm": "Are you sure you want to delete this node?",
+      "unsavedChanges": "You have unsaved changes. Are you sure you want to leave?"
+    },
+    "empty": {
+      "noSchema": "No flow data",
+      "noNode": "Select a node to edit",
+      "noTable": "No tables available"
+    },
+    "placeholders": {
+      "selectTable": "Select a table",
+      "selectField": "Select a field",
+      "inputExpression": "Enter expression",
+      "inputTitle": "Enter title",
+      "inputValue": "Enter value"
+    },
+    "categories": {
+      "trigger": "Triggers",
+      "data": "Data Operations",
+      "logic": "Logic Control",
+      "action": "Actions",
+      "advanced": "Advanced"
+    }
+  }
+}

@@ -6,7 +6,10 @@ A monorepo for AI Agent-friendly database tools and utilities.
 
 | Package | Description |
 |---------|-------------|
-| [@noco/agentdb](./packages/agentdb) | AI Agent-friendly PostgreSQL database layer with JSONB storage |
+| [@workspace/agentdb](./packages/agentdb) | AI Agent-friendly PostgreSQL database layer with JSONB storage |
+| [@workspace/platform-server](./packages/platform-server) | Low-code platform backend service with Express.js + AgentDB |
+| [@workspace/flow-designer](./packages/flow-designer) | Flow designer - core engine + React UI for visual flow editing |
+| [@workspace/flow-runtime](./packages/flow-runtime) | Flow runtime - execution engine, triggers, executors |
 
 ## Getting Started
 
@@ -50,8 +53,34 @@ npm run test --workspace=@noco/agentdb
 ```
 noco/
 ├── packages/
-│   └── agentdb/          # AI Agent-friendly database layer
+│   ├── agentdb/          # AI Agent-friendly database layer
+│   │   ├── src/
+│   │   ├── package.json
+│   │   └── tsconfig.json
+│   ├── platform-server/  # Low-code platform backend
+│   │   ├── src/
+│   │   ├── docs/
+│   │   ├── package.json
+│   │   └── tsconfig.json
+│   ├── flow-designer/    # Flow designer (core + UI)
+│   │   ├── src/
+│   │   │   ├── core/     # FlowGraph, Node, Edge
+│   │   │   ├── registry/ # NodeRegistry
+│   │   │   ├── components/ # React node components
+│   │   │   ├── model/    # UI data model
+│   │   │   ├── render/   # Flow rendering
+│   │   │   ├── setter/   # Property setters
+│   │   │   ├── states/   # State management
+│   │   │   ├── utils/    # Serializer, Validator
+│   │   │   └── lang/     # i18n
+│   │   ├── package.json
+│   │   └── tsconfig.json
+│   └── flow-runtime/     # Flow execution engine
 │       ├── src/
+│       │   ├── engine/   # ExecutionEngine
+│       │   ├── executors/ # ExecutorRegistry
+│       │   ├── triggers/ # TriggerManager
+│       │   └── types/    # Type definitions
 │       ├── package.json
 │       └── tsconfig.json
 ├── package.json          # Root workspace configuration

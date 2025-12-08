@@ -1,7 +1,7 @@
 /**
- * Flow Designer Registry Module
- * @module flow-designer/registry
+ * Flow Registry Module
+ * @module registry
  */
 
-export { NodeRegistry, defaultRegistry } from './NodeRegistry.js';
-export * from './NodeRegistry.js';
+export { NodeRegistry, defaultRegistry } from './NodeRegistry';
+export * from './NodeRegistry';

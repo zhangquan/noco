@@ -1,7 +1,7 @@
 /**
- * Flow Designer Utilities Module
- * @module flow-designer/utils
+ * Flow Utilities Module
+ * @module utils
  */
 
-export * from './validator.js';
-export * from './serializer.js';
+export * from './validator';
+export * from './serializer';

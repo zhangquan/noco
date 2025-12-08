@@ -1,7 +1,7 @@
 /**
  * Flow Validator Utilities
  * Advanced validation for flow schemas
- * @module flow-designer/utils/validator
+ * @module utils/validator
  */
 
 import { z } from 'zod';
@@ -12,7 +12,7 @@ import type {
   FlowValidationWarning,
   NodeData,
   EdgeData,
-} from '../types/index.js';
+} from '../types';
 
 // ============================================================================
 // Zod Schemas

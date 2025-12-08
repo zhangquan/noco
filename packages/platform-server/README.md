@@ -372,6 +372,11 @@ pnpm exec tsc --noEmit
 - **优化**: 完整的 TypeScript 类型支持
 - **优化**: API 路由更加 RESTful
 
+## 相关文档
+
+- [Flow Designer 设计架构](./docs/FLOW_DESIGNER.md) - 工作流设计器完整文档
+- [优化提案](./OPTIMIZATION_PROPOSAL.md) - 性能优化提案
+
 ## License
 
 MIT

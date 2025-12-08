@@ -1,33 +1,59 @@
 {
   "name": "@workspace/flow-designer",
   "version": "1.0.0",
-  "description": "Flow designer module for visual workflow design and schema management",
+  "description": "FlowSDK - React-based workflow/logic flow editor framework with core graph engine",
   "type": "module",
-  "main": "dist/index.js",
-  "types": "dist/index.d.ts",
-  "scripts": {
-    "build": "tsc",
-    "dev": "tsc --watch",
-    "lint": "eslint src --ext .ts",
-    "test": "vitest"
-  },
-  "dependencies": {
-    "ulid": "^2.3.0",
-    "zod": "^3.22.4"
-  },
-  "devDependencies": {
-    "@types/node": "^20.10.0",
-    "typescript": "^5.3.2",
-    "vitest": "^1.0.4"
-  },
+  "main": "./dist/index.js",
+  "module": "./dist/index.js",
+  "types": "./dist/index.d.ts",
   "exports": {
     ".": {
       "import": "./dist/index.js",
       "types": "./dist/index.d.ts"
     },
-    "./types": {
-      "import": "./dist/types/index.js",
-      "types": "./dist/types/index.d.ts"
-    }
-  }
+    "./styles": "./dist/index.css"
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc && vite build",
+    "preview": "vite preview",
+    "lint": "eslint src --ext ts,tsx",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@ant-design/icons": "^5.2.6",
+    "antd": "^5.12.0",
+    "i18next": "^23.7.6",
+    "immer": "^10.0.3",
+    "nanoid": "^5.0.4",
+    "react-i18next": "^13.5.0",
+    "ulid": "^2.3.0",
+    "zod": "^3.22.4",
+    "zustand": "^4.4.7"
+  },
+  "peerDependencies": {
+    "react": "^18.2.0",
+    "react-dom": "^18.2.0"
+  },
+  "devDependencies": {
+    "@types/react": "^18.2.43",
+    "@types/react-dom": "^18.2.17",
+    "@vitejs/plugin-react": "^4.2.1",
+    "sass": "^1.69.5",
+    "typescript": "^5.3.3",
+    "vite": "^5.0.8",
+    "vite-plugin-dts": "^3.6.4"
+  },
+  "keywords": [
+    "flow",
+    "workflow",
+    "editor",
+    "react",
+    "low-code",
+    "graph"
+  ],
+  "license": "MIT"
 }
