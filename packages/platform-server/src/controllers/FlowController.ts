@@ -1,16 +1,16 @@
 /**
  * Flow Controller
  * Handles workflow/flow management endpoints
- * @module api/controllers/FlowController
+ * @module controllers/FlowController
  */
 
 import { Router, type Request, type Response, type NextFunction } from 'express';
 import { z } from 'zod';
-import { FlowService, type CreateFlowInput, type UpdateFlowInput } from '../../services/FlowService.js';
-import { ProjectService } from '../../services/ProjectService.js';
-import { sendSuccess, sendCreated, sendList } from '../../utils/response.js';
-import { ValidationError, AuthenticationError, NotFoundError } from '../../errors/index.js';
-import type { ApiRequest, FlowTriggerType } from '../../types/index.js';
+import { FlowService, type CreateFlowInput, type UpdateFlowInput } from '../services/FlowService.js';
+import { ProjectService } from '../services/ProjectService.js';
+import { sendSuccess, sendCreated, sendList } from '../utils/response.js';
+import { ValidationError, AuthenticationError, NotFoundError } from '../errors/index.js';
+import type { ApiRequest, FlowTriggerType } from '../types/index.js';
 
 // ============================================================================
 // Validation Schemas

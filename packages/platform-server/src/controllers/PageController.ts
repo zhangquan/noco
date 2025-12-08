@@ -1,16 +1,16 @@
 /**
  * Page Controller
  * Handles page management endpoints
- * @module api/controllers/PageController
+ * @module controllers/PageController
  */
 
 import { Router, type Request, type Response, type NextFunction } from 'express';
 import { z } from 'zod';
-import { PageService, type CreatePageInput, type UpdatePageInput } from '../../services/PageService.js';
-import { ProjectService } from '../../services/ProjectService.js';
-import { sendSuccess, sendCreated, sendList } from '../../utils/response.js';
-import { ValidationError, AuthenticationError, NotFoundError } from '../../errors/index.js';
-import type { ApiRequest } from '../../types/index.js';
+import { PageService, type CreatePageInput, type UpdatePageInput } from '../services/PageService.js';
+import { ProjectService } from '../services/ProjectService.js';
+import { sendSuccess, sendCreated, sendList } from '../utils/response.js';
+import { ValidationError, AuthenticationError, NotFoundError } from '../errors/index.js';
+import type { ApiRequest } from '../types/index.js';
 
 // ============================================================================
 // Validation Schemas

@@ -1,15 +1,15 @@
 /**
  * User Controller
  * Handles user management endpoints
- * @module api/controllers/UserController
+ * @module controllers/UserController
  */
 
 import { Router, type Request, type Response, type NextFunction } from 'express';
 import { z } from 'zod';
-import { UserService } from '../../services/UserService.js';
-import { sendSuccess, sendList, parsePagination } from '../../utils/response.js';
-import { ValidationError, AuthenticationError } from '../../errors/index.js';
-import type { ApiRequest } from '../../types/index.js';
+import { UserService } from '../services/UserService.js';
+import { sendSuccess, sendList, parsePagination } from '../utils/response.js';
+import { ValidationError, AuthenticationError } from '../errors/index.js';
+import type { ApiRequest } from '../types/index.js';
 
 // ============================================================================
 // Validation Schemas

@@ -2,16 +2,16 @@
  * Table Controller
  * Handles table/model schema management endpoints
  * Uses agentdb SchemaManager for table/column management
- * @module api/controllers/TableController
+ * @module controllers/TableController
  */
 
 import { Router, type Request, type Response, type NextFunction } from 'express';
 import { z } from 'zod';
-import { ProjectService } from '../../services/ProjectService.js';
-import { sendSuccess, sendCreated, sendList } from '../../utils/response.js';
-import { ValidationError, AuthenticationError, NotFoundError } from '../../errors/index.js';
-import { getDb } from '../../db/index.js';
-import type { ApiRequest } from '../../types/index.js';
+import { ProjectService } from '../services/ProjectService.js';
+import { sendSuccess, sendCreated, sendList } from '../utils/response.js';
+import { ValidationError, AuthenticationError, NotFoundError } from '../errors/index.js';
+import { getDb } from '../db/index.js';
+import type { ApiRequest } from '../types/index.js';
 
 // ============================================================================
 // Types

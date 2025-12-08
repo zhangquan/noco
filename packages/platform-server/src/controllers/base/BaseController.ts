@@ -1,7 +1,7 @@
 /**
  * Base Controller Class
  * Provides standardized request handling, error management, and response formatting
- * @module api/base/BaseController
+ * @module controllers/base/BaseController
  */
 
 import type { Request, Response, NextFunction, RequestHandler } from 'express';

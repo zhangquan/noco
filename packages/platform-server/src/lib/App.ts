@@ -22,7 +22,7 @@ import {
   createFlowRouter,
   createAuthRouter,
   createUserRouter,
-} from '../api/controllers/index.js';
+} from '../controllers/index.js';
 import {
   requestIdMiddleware,
   requestLoggingMiddleware,

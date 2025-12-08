@@ -1,6 +1,6 @@
 /**
- * Base API Components
- * @module api/base
+ * Base Controller Components
+ * @module controllers/base
  */
 
 export {
