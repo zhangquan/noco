@@ -1,6 +1,6 @@
 /**
  * Model - Core abstraction layer for table entities
- * Implements SDK TableType interface and manages table metadata, Schema, and views
+ * Implements SDK TableType interface and manages table metadata and Schema
  * @module models/Model
  */
 
@@ -14,8 +14,6 @@ import {
   type TableType,
   type ColumnType,
   type ViewType,
-  type FilterType,
-  type SortType,
   type SchemaData,
   UITypes,
   isTextCol,
@@ -42,51 +40,13 @@ export interface QueryOptions {
 }
 
 // ============================================================================
-// NcMeta Interface (Dependency Injection)
-// ============================================================================
-
-interface NcMeta {
-  knex: Knex;
-  metaGet<T>(table: MetaTable, id: string): Promise<T | null>;
-  metaInsert<T>(table: MetaTable, data: Partial<T>): Promise<string>;
-  metaUpdate<T>(table: MetaTable, id: string, data: Partial<T>): Promise<void>;
-  metaDelete(table: MetaTable, id: string): Promise<number>;
-}
-
-// Default ncMeta implementation using getDb
-function getDefaultNcMeta(): NcMeta {
-  const db = getDb();
-  return {
-    knex: db,
-    async metaGet<T>(table: MetaTable, id: string): Promise<T | null> {
-      return db(table).where('id', id).first() as Promise<T | null>;
-    },
-    async metaInsert<T>(table: MetaTable, data: Partial<T>): Promise<string> {
-      const insertData = { ...data } as Record<string, unknown>;
-      if (!insertData.id) insertData.id = generateId();
-      const now = new Date();
-      if (!insertData.created_at) insertData.created_at = now;
-      if (!insertData.updated_at) insertData.updated_at = now;
-      await db(table).insert(insertData);
-      return insertData.id as string;
-    },
-    async metaUpdate<T>(table: MetaTable, id: string, data: Partial<T>): Promise<void> {
-      const updateData = { ...data, updated_at: new Date() } as Record<string, unknown>;
-      await db(table).where('id', id).update(updateData);
-    },
-    async metaDelete(table: MetaTable, id: string): Promise<number> {
-      return db(table).where('id', id).delete();
-    },
-  };
-}
-
-// ============================================================================
 // Model Class
 // ============================================================================
 
 /**
  * Model class - Core abstraction for table entities
  * Implements TableType interface from SDK
+ * Uses database as storage interface
  *
  * @example
  * ```typescript
@@ -164,10 +124,10 @@ export class Model implements TableType {
   /** Cached published schema */
   private _publicSchema?: SchemaData;
 
-  /** Cached columns */
+  /** Columns from schema (cached) */
   private _columns?: ColumnType[];
 
-  /** Cached views */
+  /** Views from schema (cached) */
   private _views?: ViewType[];
 
   // ==========================================================================
@@ -296,7 +256,7 @@ export class Model implements TableType {
   /**
    * Get schema data with caching
    */
-  async getSchema(ncMeta: NcMeta = getDefaultNcMeta()): Promise<SchemaData | null> {
+  async getSchema(options?: TableOptions): Promise<SchemaData | null> {
     if (this._schema) {
       return this._schema;
     }
@@ -305,12 +265,21 @@ export class Model implements TableType {
       return null;
     }
 
-    const schema = await ncMeta.metaGet<SchemaData>(MetaTable.SCHEMAS, this.fk_schema_id);
+    const db = options?.knex || getDb();
+    const schema = await db(MetaTable.SCHEMAS).where('id', this.fk_schema_id).first();
+    
     if (schema) {
       this._schema = schema;
+      // Extract columns and views from schema data
+      if (schema.data?.columns) {
+        this._columns = schema.data.columns as ColumnType[];
+      }
+      if (schema.data?.views) {
+        this._views = schema.data.views as ViewType[];
+      }
     }
 
-    return schema;
+    return schema || null;
   }
 
   /**
@@ -318,28 +287,36 @@ export class Model implements TableType {
    */
   async updateSchema(
     data: Partial<SchemaData>,
-    ncMeta: NcMeta = getDefaultNcMeta()
+    options?: TableOptions
   ): Promise<SchemaData | null> {
+    const db = options?.knex || getDb();
+    const now = new Date();
     let schemaId = this.fk_schema_id;
 
     if (schemaId) {
       // Update existing schema
-      await ncMeta.metaUpdate<SchemaData>(MetaTable.SCHEMAS, schemaId, data);
+      await db(MetaTable.SCHEMAS)
+        .where('id', schemaId)
+        .update({ ...data, updated_at: now });
     } else {
       // Create new schema
+      schemaId = generateId();
       const schemaData: Partial<SchemaData> = {
+        id: schemaId,
         ...data,
         domain: 'model',
         fk_domain_id: this.id,
         fk_project_id: this.project_id || this.fk_project_id,
         env: 'DEV',
+        created_at: now,
+        updated_at: now,
       };
-      schemaId = await ncMeta.metaInsert<SchemaData>(MetaTable.SCHEMAS, schemaData);
+      await db(MetaTable.SCHEMAS).insert(schemaData);
 
       // Update model with schema reference
-      await ncMeta.metaUpdate<TableType>(MetaTable.MODELS, this.id, {
-        fk_schema_id: schemaId,
-      });
+      await db(MetaTable.MODELS)
+        .where('id', this.id)
+        .update({ fk_schema_id: schemaId, updated_at: now });
       this.fk_schema_id = schemaId;
     }
 
@@ -349,90 +326,9 @@ export class Model implements TableType {
     this._views = undefined;
 
     // Update publish state to need_publish
-    await this.updatePublishState(ncMeta);
+    await this.updatePublishState(options);
 
-    return this.getSchema(ncMeta);
-  }
-
-  /**
-   * Get column definitions from schema
-   */
-  async getColumns(ncMeta: NcMeta = getDefaultNcMeta()): Promise<ColumnType[]> {
-    if (this._columns) {
-      return this._columns;
-    }
-
-    const schema = await this.getSchema(ncMeta);
-    if (!schema?.data?.columns) {
-      return [];
-    }
-
-    this._columns = schema.data.columns as ColumnType[];
-    return this._columns;
-  }
-
-  // ==========================================================================
-  // View Methods
-  // ==========================================================================
-
-  /**
-   * Get all views for this model
-   */
-  async getViews(ncMeta: NcMeta = getDefaultNcMeta()): Promise<ViewType[]> {
-    if (this._views) {
-      return this._views;
-    }
-
-    const schema = await this.getSchema(ncMeta);
-    if (!schema?.data?.views) {
-      return [];
-    }
-
-    this._views = schema.data.views as ViewType[];
-    return this._views;
-  }
-
-  /**
-   * Get columns for a specific view
-   */
-  async getViewColumns(
-    viewId: string,
-    ncMeta: NcMeta = getDefaultNcMeta()
-  ): Promise<ColumnType[]> {
-    const views = await this.getViews(ncMeta);
-    const view = views.find((v) => v.id === viewId);
-    if (!view?.meta?.columns) {
-      return this.getColumns(ncMeta);
-    }
-
-    const allColumns = await this.getColumns(ncMeta);
-    const viewColumnIds = view.meta.columns as string[];
-
-    return allColumns.filter((col) => viewColumnIds.includes(col.id));
-  }
-
-  /**
-   * Get filters for a specific view
-   */
-  async getViewFilters(
-    viewId: string,
-    ncMeta: NcMeta = getDefaultNcMeta()
-  ): Promise<FilterType[]> {
-    const views = await this.getViews(ncMeta);
-    const view = views.find((v) => v.id === viewId);
-    return (view?.meta?.filters as FilterType[]) || [];
-  }
-
-  /**
-   * Get sorts for a specific view
-   */
-  async getViewSorts(
-    viewId: string,
-    ncMeta: NcMeta = getDefaultNcMeta()
-  ): Promise<SortType[]> {
-    const views = await this.getViews(ncMeta);
-    const view = views.find((v) => v.id === viewId);
-    return (view?.meta?.sorts as SortType[]) || [];
+    return this.getSchema(options);
   }
 
   // ==========================================================================
@@ -481,37 +377,6 @@ export class Model implements TableType {
     return columns.find((col) => !col.pk && isTextCol(col));
   }
 
-  // Expose columns for external access
-  get columns(): ColumnType[] | undefined {
-    return this._columns;
-  }
-
-  set columns(cols: ColumnType[] | undefined) {
-    this._columns = cols;
-  }
-
-  get views(): ViewType[] | undefined {
-    return this._views;
-  }
-
-  set views(views: ViewType[] | undefined) {
-    this._views = views;
-  }
-
-  // ==========================================================================
-  // Utility Methods
-  // ==========================================================================
-
-  /**
-   * Get the underlying BigTable storage table name
-   */
-  getBigtableName(): MetaTable {
-    if (this.bigtable_table_name) {
-      return this.bigtable_table_name;
-    }
-    return this.mm ? MetaTable.BIGTABLE_RELATIONS : MetaTable.BIGTABLE;
-  }
-
   /**
    * Check if model has any text columns
    */
@@ -519,6 +384,34 @@ export class Model implements TableType {
     const columns = this._columns || [];
     return columns.some((col) => isTextCol(col));
   }
+
+  // ==========================================================================
+  // Property Accessors
+  // ==========================================================================
+
+  /** Get columns (from cached schema) */
+  get columns(): ColumnType[] | undefined {
+    return this._columns;
+  }
+
+  /** Set columns */
+  set columns(cols: ColumnType[] | undefined) {
+    this._columns = cols;
+  }
+
+  /** Get views (from cached schema) */
+  get views(): ViewType[] | undefined {
+    return this._views;
+  }
+
+  /** Set views */
+  set views(views: ViewType[] | undefined) {
+    this._views = views;
+  }
+
+  // ==========================================================================
+  // Utility Methods
+  // ==========================================================================
 
   /**
    * Convert to plain object
@@ -577,29 +470,29 @@ export class Model implements TableType {
   /**
    * Update publish state to indicate changes need publishing
    */
-  protected async updatePublishState(ncMeta: NcMeta = getDefaultNcMeta()): Promise<void> {
+  protected async updatePublishState(options?: TableOptions): Promise<void> {
     const projectId = this.project_id || this.fk_project_id;
     if (!projectId) return;
 
+    const db = options?.knex || getDb();
+    const now = new Date();
+
     // Check if publish state exists
-    const publishState = await ncMeta.knex(MetaTable.PUBLISH_STATES)
+    const publishState = await db(MetaTable.PUBLISH_STATES)
       .where('project_id', projectId)
       .first();
 
     if (publishState) {
-      await ncMeta.knex(MetaTable.PUBLISH_STATES)
+      await db(MetaTable.PUBLISH_STATES)
         .where('project_id', projectId)
-        .update({
-          status: 'draft',
-          updated_at: new Date(),
-        });
+        .update({ status: 'draft', updated_at: now });
     } else {
-      await ncMeta.knex(MetaTable.PUBLISH_STATES).insert({
+      await db(MetaTable.PUBLISH_STATES).insert({
         id: generateId(),
         project_id: projectId,
         status: 'draft',
-        created_at: new Date(),
-        updated_at: new Date(),
+        created_at: now,
+        updated_at: now,
       });
     }
   }
