@@ -140,6 +140,7 @@ export interface SelectOption {
 
 /**
  * All possible column option types
+ * @deprecated Use specific option types from column-options.ts
  */
 export type ColumnOption =
   | LinkColumnOption
@@ -147,6 +148,16 @@ export type ColumnOption =
   | RollupColumnOption
   | LookupColumnOption
   | SelectOption[];
+
+// Re-export new option types for convenience
+export type {
+  LinkColumnOptions,
+  FormulaColumnOptions,
+  RollupColumnOptions,
+  LookupColumnOptions,
+  SelectColumnOptions,
+  SelectOption as SelectOptionItem,
+} from './column-options';
 
 // ============================================================================
 // Column Constraints (AI-friendly)
@@ -236,50 +247,95 @@ export function getColumnName(column: Column): string {
 }
 
 // ============================================================================
-// System Column Constants
+// Column Type Guards
 // ============================================================================
 
 /**
- * System column UI types
+ * Check if column is a link column (Links or LinkToAnotherRecord)
  */
-export const SYSTEM_COLUMN_TYPES: UITypes[] = [
-  UITypes.ID,
-  UITypes.CreatedTime,
-  UITypes.LastModifiedTime,
-  UITypes.CreatedBy,
-  UITypes.LastModifiedBy,
-];
+export function isLinkColumn(column: Column): boolean {
+  return column.uidt === UITypes.Links || column.uidt === UITypes.LinkToAnotherRecord;
+}
 
 /**
- * Virtual column UI types (computed, not stored directly)
+ * Check if column is a formula column
  */
-export const VIRTUAL_COLUMN_TYPES: UITypes[] = [
-  UITypes.Formula,
-  UITypes.Rollup,
-  UITypes.Lookup,
-  UITypes.LinkToAnotherRecord,
-  UITypes.Links,
-];
+export function isFormulaColumn(column: Column): boolean {
+  return column.uidt === UITypes.Formula;
+}
 
 /**
- * System column name mapping
+ * Check if column is a rollup column
  */
-export const SYSTEM_COLUMN_NAMES: Partial<Record<UITypes, string>> = {
-  [UITypes.ID]: 'id',
-  [UITypes.CreatedTime]: 'created_at',
-  [UITypes.LastModifiedTime]: 'updated_at',
-  [UITypes.CreatedBy]: 'created_by',
-  [UITypes.LastModifiedBy]: 'updated_by',
-};
+export function isRollupColumn(column: Column): boolean {
+  return column.uidt === UITypes.Rollup;
+}
 
 /**
- * Default ID column definition
+ * Check if column is a lookup column
  */
-export const DEFAULT_ID_COLUMN: Column = {
-  id: '__jm_id__',
-  title: 'Id',
-  name: 'id',
-  uidt: UITypes.ID,
-  pk: true,
-  system: true,
-};
+export function isLookupColumn(column: Column): boolean {
+  return column.uidt === UITypes.Lookup;
+}
+
+/**
+ * Check if column is a select column (Single or Multi)
+ */
+export function isSelectColumn(column: Column): boolean {
+  return column.uidt === UITypes.SingleSelect || column.uidt === UITypes.MultiSelect;
+}
+
+/**
+ * Check if column is a virtual column (computed, not stored)
+ */
+export function isVirtualColumn(column: Column): boolean {
+  return (
+    column.uidt === UITypes.Formula ||
+    column.uidt === UITypes.Rollup ||
+    column.uidt === UITypes.Lookup ||
+    column.uidt === UITypes.Links ||
+    column.uidt === UITypes.LinkToAnotherRecord
+  );
+}
+
+/**
+ * Check if column is a system column
+ */
+export function isSystemColumn(column: Column): boolean {
+  return (
+    column.system === true ||
+    column.uidt === UITypes.ID ||
+    column.uidt === UITypes.CreatedTime ||
+    column.uidt === UITypes.LastModifiedTime ||
+    column.uidt === UITypes.CreatedBy ||
+    column.uidt === UITypes.LastModifiedBy
+  );
+}
+
+/**
+ * Get column options safely (handles colOptions vs options)
+ */
+export function getColumnOptions(column: Column): Record<string, unknown> | null {
+  const opts = column.colOptions || column.options;
+  if (!opts) return null;
+  if (typeof opts === 'string') {
+    try {
+      return JSON.parse(opts);
+    } catch {
+      return null;
+    }
+  }
+  return opts as Record<string, unknown>;
+}
+
+// ============================================================================
+// System Column Constants
+// Re-exported from constants.ts for backward compatibility
+// ============================================================================
+
+export {
+  SYSTEM_COLUMN_TYPES,
+  VIRTUAL_COLUMN_TYPES,
+  SYSTEM_COLUMN_NAMES,
+  DEFAULT_ID_COLUMN,
+} from './constants';
