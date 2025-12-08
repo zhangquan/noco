@@ -16,6 +16,8 @@
   },
   "references": [
     { "path": "./packages/agentdb" },
-    { "path": "./packages/platform-server" }
+    { "path": "./packages/platform-server" },
+    { "path": "./packages/flow-designer" },
+    { "path": "./packages/flow-runtime" }
   ]
 }
