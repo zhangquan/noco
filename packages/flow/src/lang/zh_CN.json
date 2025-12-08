@@ -1,0 +1,118 @@
+{
+  "flow": {
+    "designer": {
+      "title": "流程设计器",
+      "save": "保存",
+      "publish": "发布",
+      "undo": "撤销",
+      "redo": "重做",
+      "zoomIn": "放大",
+      "zoomOut": "缩小",
+      "import": "导入",
+      "export": "导出",
+      "preview": "预览",
+      "settings": "设置"
+    },
+    "nodes": {
+      "event": "事件触发",
+      "dataList": "查询数据",
+      "dataInsert": "插入数据",
+      "dataUpdate": "更新数据",
+      "dataDelete": "删除数据",
+      "if": "条件判断",
+      "condition": "条件分支",
+      "var": "变量",
+      "fn": "函数",
+      "loop": "循环",
+      "message": "消息"
+    },
+    "events": {
+      "insert": "创建记录时",
+      "update": "更新记录时",
+      "delete": "删除记录时",
+      "timer": "定时触发",
+      "manual": "手动触发",
+      "webhook": "Webhook"
+    },
+    "setter": {
+      "basic": "基础设置",
+      "data": "数据配置",
+      "advanced": "高级设置",
+      "title": "标题",
+      "description": "描述",
+      "eventType": "事件类型",
+      "table": "数据表",
+      "view": "视图",
+      "field": "字段",
+      "filters": "筛选条件",
+      "limit": "限制数量",
+      "offset": "偏移量",
+      "body": "数据",
+      "rowId": "记录ID",
+      "expression": "表达式",
+      "variable": "变量",
+      "variableName": "变量名",
+      "operation": "操作",
+      "value": "值",
+      "function": "函数",
+      "customCode": "自定义代码",
+      "source": "数据源",
+      "itemVar": "循环变量",
+      "maxIterations": "最大迭代次数",
+      "messageType": "消息类型",
+      "content": "内容",
+      "duration": "持续时间"
+    },
+    "operations": {
+      "set": "设置",
+      "increment": "增加",
+      "decrement": "减少",
+      "append": "追加",
+      "remove": "移除"
+    },
+    "messageTypes": {
+      "success": "成功",
+      "error": "错误",
+      "warning": "警告",
+      "info": "信息"
+    },
+    "actions": {
+      "addNode": "添加节点",
+      "delete": "删除",
+      "duplicate": "复制",
+      "edit": "编辑",
+      "moveUp": "上移",
+      "moveDown": "下移"
+    },
+    "categories": {
+      "data": "数据操作",
+      "logic": "逻辑",
+      "utility": "工具"
+    },
+    "placeholder": {
+      "selectTable": "选择数据表",
+      "selectView": "选择视图（可选）",
+      "selectField": "选择字段",
+      "enterExpression": "输入表达式",
+      "enterValue": "输入值",
+      "enterTitle": "输入描述"
+    },
+    "validation": {
+      "required": "此字段为必填项",
+      "invalidExpression": "无效的表达式",
+      "invalidJson": "无效的JSON",
+      "tableRequired": "请选择数据表"
+    },
+    "empty": {
+      "noSchema": "无流程",
+      "selectNode": "选择节点以编辑属性",
+      "noFields": "未配置字段"
+    },
+    "runtime": {
+      "executing": "正在执行流程...",
+      "success": "流程执行成功",
+      "error": "流程执行失败",
+      "timeout": "流程执行超时"
+    }
+  }
+}

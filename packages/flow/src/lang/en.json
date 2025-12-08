@@ -1,0 +1,118 @@
+{
+  "flow": {
+    "designer": {
+      "title": "Flow Designer",
+      "save": "Save",
+      "publish": "Publish",
+      "undo": "Undo",
+      "redo": "Redo",
+      "zoomIn": "Zoom In",
+      "zoomOut": "Zoom Out",
+      "import": "Import",
+      "export": "Export",
+      "preview": "Preview",
+      "settings": "Settings"
+    },
+    "nodes": {
+      "event": "Event Trigger",
+      "dataList": "Query Data",
+      "dataInsert": "Insert Data",
+      "dataUpdate": "Update Data",
+      "dataDelete": "Delete Data",
+      "if": "Condition",
+      "condition": "Branch",
+      "var": "Variable",
+      "fn": "Function",
+      "loop": "Loop",
+      "message": "Message"
+    },
+    "events": {
+      "insert": "On Record Create",
+      "update": "On Record Update",
+      "delete": "On Record Delete",
+      "timer": "Scheduled",
+      "manual": "Manual Trigger",
+      "webhook": "Webhook"
+    },
+    "setter": {
+      "basic": "Basic",
+      "data": "Data Configuration",
+      "advanced": "Advanced",
+      "title": "Title",
+      "description": "Description",
+      "eventType": "Event Type",
+      "table": "Table",
+      "view": "View",
+      "field": "Field",
+      "filters": "Filters",
+      "limit": "Limit",
+      "offset": "Offset",
+      "body": "Data",
+      "rowId": "Record ID",
+      "expression": "Expression",
+      "variable": "Variable",
+      "variableName": "Variable Name",
+      "operation": "Operation",
+      "value": "Value",
+      "function": "Function",
+      "customCode": "Custom Code",
+      "source": "Data Source",
+      "itemVar": "Item Variable",
+      "maxIterations": "Max Iterations",
+      "messageType": "Message Type",
+      "content": "Content",
+      "duration": "Duration"
+    },
+    "operations": {
+      "set": "Set",
+      "increment": "Increment",
+      "decrement": "Decrement",
+      "append": "Append",
+      "remove": "Remove"
+    },
+    "messageTypes": {
+      "success": "Success",
+      "error": "Error",
+      "warning": "Warning",
+      "info": "Info"
+    },
+    "actions": {
+      "addNode": "Add Node",
+      "delete": "Delete",
+      "duplicate": "Duplicate",
+      "edit": "Edit",
+      "moveUp": "Move Up",
+      "moveDown": "Move Down"
+    },
+    "categories": {
+      "data": "Data Operations",
+      "logic": "Logic",
+      "utility": "Utility"
+    },
+    "placeholder": {
+      "selectTable": "Select a table",
+      "selectView": "Select a view (optional)",
+      "selectField": "Select a field",
+      "enterExpression": "Enter expression",
+      "enterValue": "Enter value",
+      "enterTitle": "Enter a description"
+    },
+    "validation": {
+      "required": "This field is required",
+      "invalidExpression": "Invalid expression",
+      "invalidJson": "Invalid JSON",
+      "tableRequired": "Please select a table"
+    },
+    "empty": {
+      "noSchema": "No flow schema",
+      "selectNode": "Select a node to edit its properties",
+      "noFields": "No fields configured"
+    },
+    "runtime": {
+      "executing": "Executing flow...",
+      "success": "Flow executed successfully",
+      "error": "Flow execution failed",
+      "timeout": "Flow execution timeout"
+    }
+  }
+}
