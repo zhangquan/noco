@@ -1,26 +1,19 @@
 /**
- * User Model
+ * User Entity
+ * Pure domain entity for user
  * @module models/User
  */
 
-import bcrypt from 'bcryptjs';
-import { CacheScope, MetaTable } from '../types/index.js';
 import type { User as UserType, UserRole } from '../types/index.js';
-import { getDb, generateId } from '../db/index.js';
-import { NocoCache } from '../cache/index.js';
-import {
-  getById,
-  getByCondition,
-  listRecords,
-  updateRecord,
-  deleteRecord,
-  countRecords,
-  type TableOptions,
-} from './Table.js';
 
-const CACHE_SCOPE = CacheScope.USER;
-const META_TABLE = MetaTable.USERS;
+// ============================================================================
+// User Entity Class
+// ============================================================================
 
+/**
+ * User entity class - represents a user in the system
+ * Contains only properties and business logic, no data access
+ */
 export class User {
   private data: UserType;
 
@@ -28,15 +21,32 @@ export class User {
     this.data = data;
   }
 
+  // ==========================================================================
   // Getters
+  // ==========================================================================
+
   get id(): string { return this.data.id; }
   get email(): string { return this.data.email; }
+  get password(): string | undefined { return this.data.password; }
+  get salt(): string | undefined { return this.data.salt; }
   get firstname(): string | undefined { return this.data.firstname; }
   get lastname(): string | undefined { return this.data.lastname; }
   get roles(): UserRole { return this.data.roles; }
   get orgSelectedId(): string | undefined { return this.data.org_selected_id; }
   get emailVerified(): boolean { return this.data.email_verified ?? false; }
+  get inviteToken(): string | undefined { return this.data.invite_token; }
+  get resetPasswordToken(): string | undefined { return this.data.reset_password_token; }
+  get resetPasswordExpires(): Date | undefined { return this.data.reset_password_expires; }
+  get createdAt(): Date { return this.data.created_at; }
+  get updatedAt(): Date { return this.data.updated_at; }
 
+  // ==========================================================================
+  // Computed Properties
+  // ==========================================================================
+
+  /**
+   * Get user display name
+   */
   get displayName(): string {
     if (this.firstname || this.lastname) {
       return `${this.firstname || ''} ${this.lastname || ''}`.trim();
@@ -44,139 +54,70 @@ export class User {
     return this.email.split('@')[0];
   }
 
-  getData(): UserType { return this.data; }
+  /**
+   * Get full name
+   */
+  get fullName(): string {
+    return `${this.firstname || ''} ${this.lastname || ''}`.trim() || this.email;
+  }
 
-  toJSON(): UserType { return { ...this.data }; }
+  /**
+   * Check if user is admin
+   */
+  get isAdmin(): boolean {
+    return this.roles === 'super';
+  }
 
+  /**
+   * Check if password reset is expired
+   */
+  get isResetTokenExpired(): boolean {
+    if (!this.resetPasswordExpires) return true;
+    return new Date(this.resetPasswordExpires) < new Date();
+  }
+
+  // ==========================================================================
+  // Data Access
+  // ==========================================================================
+
+  /**
+   * Get raw data
+   */
+  getData(): UserType {
+    return this.data;
+  }
+
+  /**
+   * Convert to JSON
+   */
+  toJSON(): UserType {
+    return { ...this.data };
+  }
+
+  /**
+   * Convert to safe JSON (without sensitive fields)
+   */
   toSafeJSON(): Omit<UserType, 'password' | 'salt'> {
     const { password, salt, ...safeData } = this.data;
     return safeData;
   }
 
-  async verifyPassword(password: string): Promise<boolean> {
-    if (!this.data.password) return false;
-    return bcrypt.compare(password, this.data.password);
+  // ==========================================================================
+  // Update Methods
+  // ==========================================================================
+
+  /**
+   * Update internal data (called after repository update)
+   */
+  setData(data: UserType): void {
+    this.data = data;
   }
 
-  async update(data: Partial<Pick<UserType, 'firstname' | 'lastname' | 'email' | 'roles' | 'org_selected_id' | 'email_verified'>>): Promise<void> {
-    await User.update(this.id, data);
-    const updated = await User.get(this.id, { skipCache: true });
-    if (updated) {
-      this.data = updated.getData();
-    }
-  }
-
-  // Static methods
-  static async get(id: string, options?: TableOptions): Promise<User | null> {
-    const data = await getById<UserType>(CACHE_SCOPE, META_TABLE, id, options);
-    return data ? new User(data) : null;
-  }
-
-  static async getByEmail(email: string, options?: TableOptions): Promise<User | null> {
-    const cache = NocoCache.getInstance();
-    const cacheKey = `${CACHE_SCOPE}:email:${email.toLowerCase()}`;
-
-    if (!options?.skipCache) {
-      const cachedId = await cache.get<string>(cacheKey);
-      if (cachedId) {
-        return this.get(cachedId, options);
-      }
-    }
-
-    const data = await getByCondition<UserType>(META_TABLE, { email: email.toLowerCase() }, options);
-    if (!data) return null;
-
-    if (!options?.skipCache) {
-      await cache.set(cacheKey, data.id);
-    }
-
-    return new User(data);
-  }
-
-  static async insert(data: {
-    email: string;
-    password?: string;
-    firstname?: string;
-    lastname?: string;
-    roles?: UserRole;
-    invite_token?: string;
-  }, options?: TableOptions): Promise<User> {
-    const db = options?.knex || getDb();
-    const now = new Date();
-
-    let hashedPassword: string | undefined;
-    let salt: string | undefined;
-    if (data.password) {
-      salt = await bcrypt.genSalt(10);
-      hashedPassword = await bcrypt.hash(data.password, salt);
-    }
-
-    const id = generateId();
-    const userData: Partial<UserType> = {
-      id,
-      email: data.email.toLowerCase(),
-      password: hashedPassword,
-      salt,
-      firstname: data.firstname,
-      lastname: data.lastname,
-      roles: data.roles || 'user',
-      invite_token: data.invite_token,
-      email_verified: false,
-      created_at: now,
-      updated_at: now,
-    };
-
-    await db(META_TABLE).insert(userData);
-    
-    const user = await this.get(id, { ...options, skipCache: true });
-    if (!user) throw new Error('Failed to create user');
-
-    if (!options?.skipCache) {
-      const cache = NocoCache.getInstance();
-      await cache.set(`${CACHE_SCOPE}:${id}`, user.getData());
-    }
-
-    return user;
-  }
-
-  static async update(id: string, data: Partial<Pick<UserType, 'email' | 'password' | 'firstname' | 'lastname' | 'roles' | 'org_selected_id' | 'email_verified' | 'reset_password_token' | 'reset_password_expires'>>, options?: TableOptions): Promise<void> {
-    const updateData: Partial<UserType> = { ...data };
-
-    if (data.password) {
-      const salt = await bcrypt.genSalt(10);
-      updateData.password = await bcrypt.hash(data.password, salt);
-      updateData.salt = salt;
-    }
-
-    if (data.email) {
-      updateData.email = data.email.toLowerCase();
-    }
-
-    await updateRecord<UserType>(CACHE_SCOPE, META_TABLE, id, updateData, options);
-  }
-
-  static async delete(id: string, options?: TableOptions): Promise<number> {
-    const user = await this.get(id, options);
-    if (user) {
-      const cache = NocoCache.getInstance();
-      await cache.del(`${CACHE_SCOPE}:email:${user.email}`);
-    }
-    return deleteRecord(CACHE_SCOPE, META_TABLE, id, options);
-  }
-
-  static async list(options?: TableOptions): Promise<User[]> {
-    const data = await listRecords<UserType>(
-      CACHE_SCOPE,
-      META_TABLE,
-      'all',
-      { orderBy: { created_at: 'desc' } },
-      options
-    );
-    return data.map(d => new User(d));
-  }
-
-  static async count(condition?: Record<string, unknown>): Promise<number> {
-    return countRecords(META_TABLE, condition);
+  /**
+   * Merge partial data
+   */
+  merge(data: Partial<UserType>): void {
+    this.data = { ...this.data, ...data };
   }
 }
 

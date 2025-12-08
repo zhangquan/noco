@@ -1,20 +1,10 @@
 /**
- * Schema Model - Unified schema management for Table, Page, Flow
- * Supports JSON Patch (RFC 6902) based updates
+ * Schema Entity
+ * Pure domain entity for schema with JSON Patch support
  * @module models/Schema
  */
 
-import type { Knex } from 'knex';
-import { CacheScope, MetaTable, type SchemaDomain, type SchemaEnv } from '../types/index.js';
-import { getDb, generateId } from '../db/index.js';
-import { NocoCache } from '../cache/index.js';
-import {
-  getById,
-  updateRecord,
-  deleteRecord,
-  listRecords,
-  type TableOptions,
-} from './Table.js';
+import type { SchemaDomain, SchemaEnv } from '../types/index.js';
 
 // ============================================================================
 // Types
@@ -40,25 +30,17 @@ export interface JsonPatchOperation {
 }
 
 /**
- * Schema data record stored in database
+ * Schema data record
  */
 export interface SchemaRecord {
   id: string;
-  /** Domain: 'model' | 'page' | 'flow' | 'app' */
   domain: SchemaDomain;
-  /** Foreign key to domain entity (model_id, page_id, flow_id) */
   fk_domain_id: string;
-  /** Project ID */
   fk_project_id: string;
-  /** Schema JSON data */
   data: Record<string, unknown>;
-  /** Environment: 'DEV' | 'PRO' */
   env: SchemaEnv;
-  /** Schema version (auto-incremented) */
   version: number;
-  /** Created timestamp */
   created_at: Date;
-  /** Updated timestamp */
   updated_at: Date;
 }
 
@@ -74,49 +56,21 @@ export interface SchemaCreateOptions {
 }
 
 /**
- * Schema update result with applied patches
+ * Schema patch result
  */
 export interface SchemaPatchResult {
-  schema: Schema;
   appliedPatches: JsonPatchOperation[];
+  newData: Record<string, unknown>;
   newVersion: number;
 }
 
-const CACHE_SCOPE = CacheScope.SCHEMA;
-const META_TABLE = MetaTable.SCHEMAS;
-
 // ============================================================================
-// Schema Class
+// Schema Entity Class
 // ============================================================================
 
 /**
- * Schema Model - Core abstraction for JSON schema management
- * 
- * Used by Table, Page, Flow for unified schema handling.
- * Supports JSON Patch (RFC 6902) for incremental updates.
- * 
- * @example
- * ```typescript
- * // Create a new schema
- * const schema = await Schema.create({
- *   domain: 'model',
- *   fk_domain_id: tableId,
- *   fk_project_id: projectId,
- *   data: { columns: [], views: [] }
- * });
- * 
- * // Apply JSON Patch updates
- * const result = await schema.applyPatch([
- *   { op: 'add', path: '/columns/-', value: { id: 'col1', title: 'Name' } },
- *   { op: 'replace', path: '/columns/0/title', value: 'Full Name' }
- * ]);
- * 
- * // Get value at path
- * const columns = schema.getAtPath('/columns');
- * 
- * // Set value at path
- * await schema.setAtPath('/views/0/title', 'Grid View');
- * ```
+ * Schema entity class - represents a schema in the system
+ * Contains JSON Patch operations as business logic
  */
 export class Schema {
   private _data: SchemaRecord;
@@ -139,6 +93,28 @@ export class Schema {
   get createdAt(): Date { return this._data.created_at; }
   get updatedAt(): Date { return this._data.updated_at; }
 
+  // ==========================================================================
+  // Computed Properties
+  // ==========================================================================
+
+  /**
+   * Check if schema is DEV environment
+   */
+  get isDev(): boolean {
+    return this.env === 'DEV';
+  }
+
+  /**
+   * Check if schema is PRO (production) environment
+   */
+  get isPro(): boolean {
+    return this.env === 'PRO';
+  }
+
+  // ==========================================================================
+  // Data Access
+  // ==========================================================================
+
   /**
    * Get raw schema record
    */
@@ -158,15 +134,12 @@ export class Schema {
   // ==========================================================================
 
   /**
-   * Apply JSON Patch operations to schema data
+   * Apply JSON Patch operations to schema data (in memory)
+   * Returns the result without persisting - use repository to save
    * @param patches - Array of JSON Patch operations
-   * @param options - Database options
-   * @returns Result with applied patches and new version
+   * @returns Result with applied patches and new data
    */
-  async applyPatch(
-    patches: JsonPatchOperation[],
-    options?: TableOptions
-  ): Promise<SchemaPatchResult> {
+  applyPatch(patches: JsonPatchOperation[]): SchemaPatchResult {
     const data = JSON.parse(JSON.stringify(this._data.data || {}));
     const appliedPatches: JsonPatchOperation[] = [];
 
@@ -181,24 +154,14 @@ export class Schema {
       }
     }
 
-    if (appliedPatches.length === 0) {
-      return { schema: this, appliedPatches: [], newVersion: this.version };
-    }
-
-    // Update in database with new version
     const newVersion = this.version + 1;
-    await Schema.update(
-      this.id,
-      { data, version: newVersion },
-      options
-    );
 
     // Update local data
     this._data.data = data;
     this._data.version = newVersion;
     this._data.updated_at = new Date();
 
-    return { schema: this, appliedPatches, newVersion };
+    return { appliedPatches, newData: data, newVersion };
   }
 
   /**
@@ -395,326 +358,41 @@ export class Schema {
     }
   }
 
-  /**
-   * Set value at JSON Pointer path and save
-   * @param path - JSON Pointer path
-   * @param value - Value to set
-   * @param options - Database options
-   */
-  async setAtPath(path: string, value: unknown, options?: TableOptions): Promise<void> {
-    await this.applyPatch([{ op: 'replace', path, value }], options);
-  }
-
-  /**
-   * Add value at JSON Pointer path and save
-   * @param path - JSON Pointer path (use '/-' suffix for array append)
-   * @param value - Value to add
-   * @param options - Database options
-   */
-  async addAtPath(path: string, value: unknown, options?: TableOptions): Promise<void> {
-    await this.applyPatch([{ op: 'add', path, value }], options);
-  }
-
-  /**
-   * Remove value at JSON Pointer path and save
-   * @param path - JSON Pointer path
-   * @param options - Database options
-   */
-  async removeAtPath(path: string, options?: TableOptions): Promise<void> {
-    await this.applyPatch([{ op: 'remove', path }], options);
-  }
-
   // ==========================================================================
-  // Instance Update Methods
+  // Update Methods
   // ==========================================================================
 
   /**
-   * Update schema data completely (full replace)
-   * @param data - New schema data
-   * @param options - Database options
+   * Update internal data (called after repository update)
    */
-  async updateData(data: Record<string, unknown>, options?: TableOptions): Promise<void> {
-    const newVersion = this.version + 1;
-    await Schema.update(this.id, { data, version: newVersion }, options);
+  setData(data: SchemaRecord): void {
+    this._data = data;
+  }
+
+  /**
+   * Update schema data (in memory)
+   */
+  updateData(data: Record<string, unknown>): void {
     this._data.data = data;
-    this._data.version = newVersion;
+    this._data.version = this.version + 1;
     this._data.updated_at = new Date();
   }
 
   /**
-   * Merge data into schema (shallow merge)
-   * @param data - Data to merge
-   * @param options - Database options
+   * Merge data into schema (shallow merge, in memory)
    */
-  async mergeData(data: Record<string, unknown>, options?: TableOptions): Promise<void> {
-    const mergedData = { ...this._data.data, ...data };
-    await this.updateData(mergedData, options);
-  }
-
-  /**
-   * Publish schema (copy DEV to PRO)
-   * @param options - Database options
-   * @returns Published schema
-   */
-  async publish(options?: TableOptions): Promise<Schema> {
-    if (this.env !== 'DEV') {
-      throw new Error('Only DEV schemas can be published');
-    }
-
-    // Find existing PRO schema or create new one
-    const existingPro = await Schema.getByDomainAndEnv(
-      this.domain,
-      this.domainId,
-      'PRO',
-      options
-    );
-
-    if (existingPro) {
-      // Update existing PRO schema
-      await existingPro.updateData(this.data, options);
-      return existingPro;
-    }
-
-    // Create new PRO schema
-    return Schema.create({
-      domain: this.domain,
-      fk_domain_id: this.domainId,
-      fk_project_id: this.projectId,
-      data: this.data,
-      env: 'PRO',
-    }, options);
+  mergeData(data: Record<string, unknown>): void {
+    this._data.data = { ...this._data.data, ...data };
+    this._data.version = this.version + 1;
+    this._data.updated_at = new Date();
   }
 
   // ==========================================================================
-  // Static Methods - CRUD Operations
+  // Static Utility Methods
   // ==========================================================================
 
   /**
-   * Get schema by ID
-   */
-  static async get(id: string, options?: TableOptions): Promise<Schema | null> {
-    const data = await getById<SchemaRecord>(CACHE_SCOPE, META_TABLE, id, options);
-    return data ? new Schema(data) : null;
-  }
-
-  /**
-   * Get schema by domain entity and environment
-   */
-  static async getByDomainAndEnv(
-    domain: SchemaDomain,
-    domainId: string,
-    env: SchemaEnv = 'DEV',
-    options?: TableOptions
-  ): Promise<Schema | null> {
-    const db = options?.knex || getDb();
-    const data = await db(META_TABLE)
-      .where({
-        domain,
-        fk_domain_id: domainId,
-        env,
-      })
-      .orderBy('version', 'desc')
-      .first();
-    
-    return data ? new Schema(data) : null;
-  }
-
-  /**
-   * Get or create schema for domain entity
-   */
-  static async getOrCreate(
-    createOptions: SchemaCreateOptions,
-    options?: TableOptions
-  ): Promise<Schema> {
-    const existing = await Schema.getByDomainAndEnv(
-      createOptions.domain,
-      createOptions.fk_domain_id,
-      createOptions.env || 'DEV',
-      options
-    );
-
-    if (existing) {
-      return existing;
-    }
-
-    return Schema.create(createOptions, options);
-  }
-
-  /**
-   * Create a new schema
-   */
-  static async create(
-    createOptions: SchemaCreateOptions,
-    options?: TableOptions
-  ): Promise<Schema> {
-    const db = options?.knex || getDb();
-    const cache = NocoCache.getInstance();
-    const now = new Date();
-    const id = generateId();
-
-    const schemaData: Partial<SchemaRecord> = {
-      id,
-      domain: createOptions.domain,
-      fk_domain_id: createOptions.fk_domain_id,
-      fk_project_id: createOptions.fk_project_id,
-      data: createOptions.data || {},
-      env: createOptions.env || 'DEV',
-      version: 1,
-      created_at: now,
-      updated_at: now,
-    };
-
-    await db(META_TABLE).insert(schemaData);
-
-    const schema = await this.get(id, { ...options, skipCache: true });
-    if (!schema) throw new Error('Failed to create schema');
-
-    if (!options?.skipCache) {
-      await cache.set(`${CACHE_SCOPE}:${id}`, schema.getData());
-      await cache.invalidateList(CACHE_SCOPE, createOptions.fk_project_id);
-    }
-
-    return schema;
-  }
-
-  /**
-   * Update schema record
-   */
-  static async update(
-    id: string,
-    data: Partial<Pick<SchemaRecord, 'data' | 'version' | 'env'>>,
-    options?: TableOptions
-  ): Promise<void> {
-    const schema = await this.get(id, options);
-    await updateRecord<SchemaRecord>(CACHE_SCOPE, META_TABLE, id, data, options);
-    if (schema && !options?.skipCache) {
-      const cache = NocoCache.getInstance();
-      await cache.invalidateList(CACHE_SCOPE, schema.projectId);
-    }
-  }
-
-  /**
-   * Delete schema
-   */
-  static async delete(id: string, options?: TableOptions): Promise<number> {
-    const schema = await this.get(id, options);
-    const result = await deleteRecord(CACHE_SCOPE, META_TABLE, id, options);
-    if (schema && !options?.skipCache) {
-      const cache = NocoCache.getInstance();
-      await cache.invalidateList(CACHE_SCOPE, schema.projectId);
-    }
-    return result;
-  }
-
-  /**
-   * Delete all schemas for a domain entity
-   */
-  static async deleteByDomain(
-    domain: SchemaDomain,
-    domainId: string,
-    options?: TableOptions
-  ): Promise<number> {
-    const db = options?.knex || getDb();
-    const result = await db(META_TABLE)
-      .where({ domain, fk_domain_id: domainId })
-      .delete();
-
-    if (!options?.skipCache) {
-      const cache = NocoCache.getInstance();
-      // Clear related caches
-      await cache.invalidateList(CACHE_SCOPE, domainId);
-    }
-
-    return result;
-  }
-
-  /**
-   * List schemas for a project
-   */
-  static async listForProject(
-    projectId: string,
-    domain?: SchemaDomain,
-    options?: TableOptions
-  ): Promise<Schema[]> {
-    const condition: Record<string, unknown> = { fk_project_id: projectId };
-    if (domain) {
-      condition.domain = domain;
-    }
-
-    const data = await listRecords<SchemaRecord>(
-      CACHE_SCOPE,
-      META_TABLE,
-      domain ? `${projectId}:${domain}` : projectId,
-      { condition, orderBy: { created_at: 'desc' } },
-      options
-    );
-
-    return data.map(d => new Schema(d));
-  }
-
-  /**
-   * List schema versions for a domain entity
-   */
-  static async listVersions(
-    domain: SchemaDomain,
-    domainId: string,
-    env: SchemaEnv = 'DEV',
-    options?: TableOptions
-  ): Promise<Schema[]> {
-    const db = options?.knex || getDb();
-    const data = await db(META_TABLE)
-      .where({ domain, fk_domain_id: domainId, env })
-      .orderBy('version', 'desc');
-
-    return data.map((d: SchemaRecord) => new Schema(d));
-  }
-
-  /**
-   * Get specific version of schema
-   */
-  static async getVersion(
-    domain: SchemaDomain,
-    domainId: string,
-    version: number,
-    env: SchemaEnv = 'DEV',
-    options?: TableOptions
-  ): Promise<Schema | null> {
-    const db = options?.knex || getDb();
-    const data = await db(META_TABLE)
-      .where({ domain, fk_domain_id: domainId, env, version })
-      .first();
-
-    return data ? new Schema(data) : null;
-  }
-
-  // ==========================================================================
-  // Utility Methods
-  // ==========================================================================
-
-  /**
-   * Clone schema to another domain entity
-   */
-  static async clone(
-    sourceId: string,
-    targetDomainId: string,
-    options?: TableOptions
-  ): Promise<Schema> {
-    const source = await this.get(sourceId, options);
-    if (!source) {
-      throw new Error(`Source schema not found: ${sourceId}`);
-    }
-
-    return Schema.create({
-      domain: source.domain,
-      fk_domain_id: targetDomainId,
-      fk_project_id: source.projectId,
-      data: JSON.parse(JSON.stringify(source.data)),
-      env: 'DEV',
-    }, options);
-  }
-
-  /**
-   * Compare two schemas and generate patches
+   * Compare two data objects and generate patches
    */
   static diff(
     oldData: Record<string, unknown>,

@@ -10,8 +10,9 @@ import jwt from 'jsonwebtoken';
 import crypto from 'crypto';
 import type { Request, Response, NextFunction } from 'express';
 import { User } from '../models/User.js';
+import { UserRepository } from '../repositories/UserRepository.js';
+import { ProjectRepository } from '../repositories/ProjectRepository.js';
 import type { JwtPayload, ApiRequest, ProjectRole } from '../types/index.js';
-import { Project } from '../models/Project.js';
 import { AuthenticationError, AuthorizationError, Errors } from '../errors/index.js';
 import { logAuditEvent } from '../middleware/logging.js';
 
@@ -177,8 +178,8 @@ export async function refreshTokenPair(refreshTokenStr: string): Promise<TokenPa
     }
 
     // Fetch user to ensure they still exist
-    const user = await User.get(payload.id);
-    if (!user) {
+    const userRecord = await UserRepository.getById(payload.id);
+    if (!userRecord) {
       return null;
     }
 
@@ -191,14 +192,14 @@ export async function refreshTokenPair(refreshTokenStr: string): Promise<TokenPa
     logAuditEvent({
       action: 'token.refresh',
       resourceType: 'user',
-      resourceId: user.id,
-      userId: user.id,
+      resourceId: userRecord.id,
+      userId: userRecord.id,
     });
 
     return generateTokenPair({
-      id: user.id,
-      email: user.email,
-      roles: user.roles,
+      id: userRecord.id,
+      email: userRecord.email,
+      roles: userRecord.roles,
     });
   } catch {
     return null;
@@ -258,8 +259,9 @@ export function configurePassport(passport: PassportStatic): void {
   passport.use(
     new JwtStrategy(options, async (payload: JwtPayload, done) => {
       try {
-        const user = await User.get(payload.id);
-        if (user) {
+        const userRecord = await UserRepository.getById(payload.id);
+        if (userRecord) {
+          const user = new User(userRecord);
           return done(null, user);
         }
         return done(null, false);
@@ -326,7 +328,7 @@ export function requireProjectPermission(operation: string) {
         return next();
       }
 
-      const role = await Project.getUserRole(projectId, apiReq.user.id);
+      const role = await ProjectRepository.getUserRole(projectId, apiReq.user.id);
       if (!role) {
         return next(Errors.permissionDenied('access this project'));
       }
@@ -387,12 +389,12 @@ export function requireApiKey(keyValidator: (key: string) => Promise<{ userId: s
       }
 
       // Load user
-      const user = await User.get(keyData.userId);
-      if (!user) {
+      const userRecord = await UserRepository.getById(keyData.userId);
+      if (!userRecord) {
         return next(Errors.tokenInvalid());
       }
 
-      (req as ApiRequest).user = user.getData();
+      (req as ApiRequest).user = userRecord;
       (req as any).apiKeyScopes = keyData.scopes;
       next();
     } catch (error) {

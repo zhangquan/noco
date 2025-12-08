@@ -197,14 +197,63 @@ export {
 } from './auth/index.js';
 
 // ============================================================================
-// Models (Data Access Layer - Legacy)
+// Repositories (Data Access Layer)
 // ============================================================================
 
 export {
+  // Base Repository
+  BaseRepository,
+  genId,
+  type RepositoryOptions,
+  type QueryOptions,
+  type BaseEntity as RepositoryBaseEntity,
+  // User Repository
+  UserRepository,
+  type UserRecord,
+  type CreateUserData,
+  type UpdateUserData,
+  // Project Repository
+  ProjectRepository,
+  type ProjectRecord,
+  type CreateProjectData,
+  type UpdateProjectData,
+  type ProjectUserRecord,
+  // Page Repository
+  PageRepository,
+  type PageRecord,
+  type CreatePageData,
+  type UpdatePageData,
+  // Flow Repository
+  FlowRepository,
+  type FlowRecord,
+  type CreateFlowData,
+  type UpdateFlowData,
+  // Schema Repository
+  SchemaRepository,
+  type SchemaRecord as RepoSchemaRecord,
+  type CreateSchemaData,
+  type UpdateSchemaData,
+} from './repositories/index.js';
+
+// ============================================================================
+// Models (Domain Entities)
+// ============================================================================
+
+export {
+  // Entity Classes
   User,
   Project,
   Page,
   Flow,
+  Model,
+  Schema,
+  // Schema Types
+  type JsonPatchOp,
+  type JsonPatchOperation,
+  type SchemaRecord,
+  type SchemaCreateOptions,
+  type SchemaPatchResult,
+  // Table/Model Types
   type TableOptions,
 } from './models/index.js';
 
