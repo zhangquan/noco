@@ -1,0 +1,65 @@
+/**
+ * AddNode Styles
+ */
+
+.add-node-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  transition: all 0.2s ease;
+
+  &:hover {
+    transform: scale(1.1);
+    border-color: #1677ff;
+    color: #1677ff;
+  }
+
+  &.ant-btn-sm {
+    width: 24px;
+    height: 24px;
+    padding: 0;
+  }
+
+  &.ant-btn-default {
+    width: 32px;
+    height: 32px;
+    padding: 0;
+  }
+
+  &.ant-btn-lg {
+    width: 40px;
+    height: 40px;
+    padding: 0;
+  }
+}
+
+// Menu item styles
+.add-node-menu-item {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+
+  &__label {
+    font-weight: 500;
+  }
+
+  &__desc {
+    font-size: 12px;
+    color: rgba(0, 0, 0, 0.45);
+  }
+}
+
+// Menu styles
+.ant-dropdown-menu {
+  min-width: 180px;
+
+  .ant-dropdown-menu-item {
+    padding: 8px 12px;
+  }
+
+  .ant-dropdown-menu-submenu-title {
+    padding: 8px 12px;
+    font-weight: 500;
+  }
+}

@@ -6,7 +6,9 @@ A monorepo for AI Agent-friendly database tools and utilities.
 
 | Package | Description |
 |---------|-------------|
-| [@noco/agentdb](./packages/agentdb) | AI Agent-friendly PostgreSQL database layer with JSONB storage |
+| [@workspace/agentdb](./packages/agentdb) | AI Agent-friendly PostgreSQL database layer with JSONB storage |
+| [@workspace/platform-server](./packages/platform-server) | Low-code platform backend service with Express.js + AgentDB |
+| [@workspace/flow](./packages/flow) | React-based workflow/logic flow editor framework (FlowSDK) |
 
 ## Getting Started
 
@@ -50,8 +52,23 @@ npm run test --workspace=@noco/agentdb
 ```
 noco/
 ├── packages/
-│   └── agentdb/          # AI Agent-friendly database layer
+│   ├── agentdb/          # AI Agent-friendly database layer
+│   │   ├── src/
+│   │   ├── package.json
+│   │   └── tsconfig.json
+│   ├── platform-server/  # Low-code platform backend
+│   │   ├── src/
+│   │   ├── docs/
+│   │   ├── package.json
+│   │   └── tsconfig.json
+│   └── flow/             # FlowSDK - Workflow editor
 │       ├── src/
+│       │   ├── components/
+│       │   ├── model/
+│       │   ├── render/
+│       │   ├── setter/
+│       │   ├── states/
+│       │   └── lang/
 │       ├── package.json
 │       └── tsconfig.json
 ├── package.json          # Root workspace configuration

@@ -1,0 +1,176 @@
+/**
+ * FlowSDK Global Styles
+ */
+
+/* CSS Reset for flow designer */
+.flow-designer,
+.flow-designer * {
+  box-sizing: border-box;
+}
+
+/* Designer Layout */
+.flow-designer {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  height: 100%;
+  min-height: 400px;
+  background: #f5f5f5;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial,
+    'Noto Sans', sans-serif;
+}
+
+/* Header */
+.flow-designer__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 16px;
+  background: #fff;
+  border-bottom: 1px solid #e8e8e8;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.05);
+  z-index: 10;
+}
+
+.flow-designer__header-left {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.flow-designer__header-center {
+  display: flex;
+  align-items: center;
+}
+
+.flow-designer__header-right {
+  display: flex;
+  align-items: center;
+}
+
+.flow-designer__title {
+  font-size: 16px;
+  font-weight: 600;
+  color: rgba(0, 0, 0, 0.88);
+}
+
+.flow-designer__dirty-indicator {
+  color: #faad14;
+  font-size: 12px;
+}
+
+.flow-designer__divider {
+  width: 1px;
+  height: 16px;
+  margin: 0 8px;
+  background: #e8e8e8;
+}
+
+.flow-designer__zoom-level {
+  min-width: 48px;
+  text-align: center;
+  font-size: 12px;
+  color: rgba(0, 0, 0, 0.65);
+}
+
+/* Content */
+.flow-designer__content {
+  position: relative;
+  flex: 1;
+  overflow: auto;
+  background: #fafafa;
+}
+
+.flow-designer__canvas {
+  min-width: 100%;
+  min-height: 100%;
+  padding: 24px;
+  transition: transform 0.2s ease;
+}
+
+/* Sider */
+.flow-designer__sider {
+  border-left: 1px solid #e8e8e8;
+  overflow: hidden;
+}
+
+.flow-designer__sider .ant-layout-sider-children {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+}
+
+/* Node wrapper transitions */
+.flow-node {
+  transition: transform 0.2s ease, box-shadow 0.2s ease, border-color 0.2s ease;
+}
+
+/* Scrollbar styling */
+.flow-designer__content::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+.flow-designer__content::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.flow-designer__content::-webkit-scrollbar-thumb {
+  background: #d9d9d9;
+  border-radius: 4px;
+}
+
+.flow-designer__content::-webkit-scrollbar-thumb:hover {
+  background: #bfbfbf;
+}
+
+/* Animation keyframes */
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes slideUp {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes pulse {
+  0%, 100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.6;
+  }
+}
+
+/* Utility classes */
+.flow-fade-in {
+  animation: fadeIn 0.3s ease;
+}
+
+.flow-slide-up {
+  animation: slideUp 0.3s ease;
+}
+
+/* Print styles */
+@media print {
+  .flow-designer__header,
+  .flow-designer__sider {
+    display: none;
+  }
+
+  .flow-designer__content {
+    overflow: visible;
+  }
+}
