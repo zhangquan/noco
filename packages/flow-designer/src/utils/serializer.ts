@@ -1,16 +1,16 @@
 /**
  * Flow Serializer Utilities
  * Serialization and deserialization for flow schemas
- * @module flow-designer/utils/serializer
+ * @module utils/serializer
  */
 
 import type {
   FlowSchema,
   NodeData,
   EdgeData,
-} from '../types/index.js';
-import { FlowGraph } from '../core/FlowGraph.js';
-import { validateFlowSchema } from './validator.js';
+} from '../types';
+import { FlowGraph } from '../core/FlowGraph';
+import { validateFlowSchema } from './validator';
 
 // ============================================================================
 // Serialization Options

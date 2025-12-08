@@ -1,11 +1,11 @@
 /**
  * Flow Edge Class
  * Represents a connection between two nodes in the flow graph
- * @module flow-designer/core/Edge
+ * @module core/Edge
  */
 
 import { ulid } from 'ulid';
-import type { EdgeData, EdgeType } from '../types/index.js';
+import type { EdgeData, EdgeType } from '../types';
 
 // ============================================================================
 // Edge Class

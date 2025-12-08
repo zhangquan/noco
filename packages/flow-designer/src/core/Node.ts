@@ -1,7 +1,7 @@
 /**
  * Flow Node Class
  * Represents a single node in the flow graph
- * @module flow-designer/core/Node
+ * @module core/Node
  */
 
 import { ulid } from 'ulid';
@@ -17,7 +17,7 @@ import type {
   NodeValidationError,
   NodeValidationWarning,
   NodeDefinition,
-} from '../types/index.js';
+} from '../types';
 
 // ============================================================================
 // Node Class

@@ -1,9 +1,9 @@
 /**
- * Flow Designer Core Module
- * @module flow-designer/core
+ * Flow Core Module
+ * @module core
  */
 
-export { Node } from './Node.js';
-export { Edge } from './Edge.js';
-export { FlowGraph } from './FlowGraph.js';
-export type { FlowEventListener } from './FlowGraph.js';
+export { Node } from './Node';
+export { Edge } from './Edge';
+export { FlowGraph } from './FlowGraph';
+export type { FlowEventListener } from './FlowGraph';

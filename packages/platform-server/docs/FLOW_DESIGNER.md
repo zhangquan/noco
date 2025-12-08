@@ -924,6 +924,5 @@ const MyComponent = () => {
 
 ## 相关包
 
-- [@workspace/flow-designer](../../flow-designer) - Flow 核心数据模型
+- [@workspace/flow-designer](../../flow-designer) - Flow 设计器 (核心引擎 + React UI)
 - [@workspace/flow-runtime](../../flow-runtime) - Flow 执行引擎
-- [@workspace/flow-ui](../../flow) - Flow React UI 组件

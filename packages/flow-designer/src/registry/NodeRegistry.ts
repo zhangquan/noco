@@ -1,14 +1,14 @@
 /**
  * Node Registry
  * Registry for built-in and custom node definitions
- * @module flow-designer/registry/NodeRegistry
+ * @module registry/NodeRegistry
  */
 
 import type {
   NodeDefinition,
   NodeType,
   NodeCategory,
-} from '../types/index.js';
+} from '../types';
 
 // ============================================================================
 // Built-in Node Definitions

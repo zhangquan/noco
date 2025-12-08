@@ -8,9 +8,8 @@ A monorepo for AI Agent-friendly database tools and utilities.
 |---------|-------------|
 | [@workspace/agentdb](./packages/agentdb) | AI Agent-friendly PostgreSQL database layer with JSONB storage |
 | [@workspace/platform-server](./packages/platform-server) | Low-code platform backend service with Express.js + AgentDB |
-| [@workspace/flow-designer](./packages/flow-designer) | Flow designer core - graph management, nodes, edges, schema |
+| [@workspace/flow-designer](./packages/flow-designer) | Flow designer - core engine + React UI for visual flow editing |
 | [@workspace/flow-runtime](./packages/flow-runtime) | Flow runtime - execution engine, triggers, executors |
-| [@workspace/flow-ui](./packages/flow) | Flow UI - React components for visual flow editing |
 
 ## Getting Started
 
@@ -63,30 +62,25 @@ noco/
 │   │   ├── docs/
 │   │   ├── package.json
 │   │   └── tsconfig.json
-│   ├── flow-designer/    # Flow designer core
+│   ├── flow-designer/    # Flow designer (core + UI)
 │   │   ├── src/
 │   │   │   ├── core/     # FlowGraph, Node, Edge
 │   │   │   ├── registry/ # NodeRegistry
-│   │   │   ├── types/    # Type definitions
-│   │   │   └── utils/    # Serializer, Validator
+│   │   │   ├── components/ # React node components
+│   │   │   ├── model/    # UI data model
+│   │   │   ├── render/   # Flow rendering
+│   │   │   ├── setter/   # Property setters
+│   │   │   ├── states/   # State management
+│   │   │   ├── utils/    # Serializer, Validator
+│   │   │   └── lang/     # i18n
 │   │   ├── package.json
 │   │   └── tsconfig.json
-│   ├── flow-runtime/     # Flow execution engine
-│   │   ├── src/
-│   │   │   ├── engine/   # ExecutionEngine
-│   │   │   ├── executors/ # ExecutorRegistry
-│   │   │   ├── triggers/ # TriggerManager
-│   │   │   └── types/    # Type definitions
-│   │   ├── package.json
-│   │   └── tsconfig.json
-│   └── flow/             # Flow UI (React components)
+│   └── flow-runtime/     # Flow execution engine
 │       ├── src/
-│       │   ├── components/
-│       │   ├── model/
-│       │   ├── render/
-│       │   ├── setter/
-│       │   ├── states/
-│       │   └── lang/
+│       │   ├── engine/   # ExecutionEngine
+│       │   ├── executors/ # ExecutorRegistry
+│       │   ├── triggers/ # TriggerManager
+│       │   └── types/    # Type definitions
 │       ├── package.json
 │       └── tsconfig.json
 ├── package.json          # Root workspace configuration
