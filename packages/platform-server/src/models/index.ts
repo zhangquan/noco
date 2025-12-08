@@ -3,7 +3,7 @@
  * @module models
  */
 
-export { type TableOptions } from './Table.js';
+export { Table, type TableOptions } from './Table.js';
 export { User } from './User.js';
 export { Project } from './Project.js';
 export { Page } from './Page.js';
