@@ -1,25 +1,22 @@
 /**
  * Models Module
+ * Pure domain entity classes
  * @module models
  */
 
-// Table/Model helpers and class
-export {
-  Model,
-  type TableOptions,
-  type QueryOptions,
-  genId,
-  getById,
-  getByCondition,
-  listRecords,
-  insertRecord,
-  updateRecord,
-  deleteRecord,
-  countRecords,
-  invalidateListCache,
-} from './Table.js';
+// User Entity
+export { User } from './User.js';
 
-// Schema model - unified schema management for Table, Page, Flow
+// Project Entity
+export { Project } from './Project.js';
+
+// Page Entity
+export { Page } from './Page.js';
+
+// Flow Entity
+export { Flow } from './Flow.js';
+
+// Schema Entity (with JSON Patch support)
 export {
   Schema,
   type JsonPatchOp,
@@ -29,8 +26,21 @@ export {
   type SchemaPatchResult,
 } from './Schema.js';
 
-// Entity models
-export { User } from './User.js';
-export { Project } from './Project.js';
-export { Page } from './Page.js';
-export { Flow } from './Flow.js';
+// Table/Model Entity
+export {
+  Model,
+  type TableOptions,
+  type QueryOptions,
+  genId,
+} from './Table.js';
+
+// ============================================================================
+// Backward Compatibility
+// ============================================================================
+
+// Re-export repository functions that were previously in Table.ts
+// This maintains backward compatibility for existing code
+export {
+  // These are now in repositories but re-exported for compatibility
+  genId as generateId,
+} from './Table.js';

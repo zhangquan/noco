@@ -1,34 +1,32 @@
 /**
- * Project Model
+ * Project Entity
+ * Pure domain entity for project
  * @module models/Project
  */
 
-import { CacheScope, MetaTable } from '../types/index.js';
-import type { Project as ProjectType, ProjectUser, ProjectRole } from '../types/index.js';
-import { getDb, generateId } from '../db/index.js';
-import { NocoCache } from '../cache/index.js';
-import {
-  getById,
-  getByCondition,
-  listRecords,
-  updateRecord,
-  deleteRecord,
-  invalidateListCache,
-  countRecords,
-  type TableOptions,
-} from './Table.js';
+import type { Project as ProjectType, ProjectRole } from '../types/index.js';
 
-const CACHE_SCOPE = CacheScope.PROJECT;
-const META_TABLE = MetaTable.PROJECTS;
+// ============================================================================
+// Project Entity Class
+// ============================================================================
 
+/**
+ * Project entity class - represents a project in the system
+ * Contains only properties and business logic, no data access
+ */
 export class Project {
   private data: ProjectType;
+  private _role?: ProjectRole;
 
-  constructor(data: ProjectType) {
+  constructor(data: ProjectType, role?: ProjectRole) {
     this.data = data;
+    this._role = role;
   }
 
+  // ==========================================================================
   // Getters
+  // ==========================================================================
+
   get id(): string { return this.data.id; }
   get title(): string { return this.data.title; }
   get prefix(): string { return this.data.prefix; }
@@ -36,211 +34,69 @@ export class Project {
   get orgId(): string | undefined { return this.data.org_id; }
   get isMeta(): boolean { return this.data.is_meta ?? false; }
   get deleted(): boolean { return this.data.deleted ?? false; }
+  get order(): number { return this.data.order ?? 0; }
+  get color(): string | undefined { return this.data.color; }
   get meta(): Record<string, unknown> | undefined { return this.data.meta; }
+  get createdAt(): Date { return this.data.created_at; }
+  get updatedAt(): Date { return this.data.updated_at; }
 
-  getData(): ProjectType { return this.data; }
-  toJSON(): ProjectType { return { ...this.data }; }
+  /**
+   * Get user's role in this project (if loaded)
+   */
+  get role(): ProjectRole | undefined { return this._role; }
 
-  async update(data: Partial<Pick<ProjectType, 'title' | 'description' | 'order' | 'color' | 'meta'>>): Promise<void> {
-    await Project.update(this.id, data);
-    const updated = await Project.get(this.id, { skipCache: true });
-    if (updated) this.data = updated.getData();
+  // ==========================================================================
+  // Computed Properties
+  // ==========================================================================
+
+  /**
+   * Check if project is active (not deleted)
+   */
+  get isActive(): boolean {
+    return !this.deleted;
   }
 
-  async addUser(userId: string, roles?: ProjectRole): Promise<string> {
-    return Project.addUser(this.id, userId, roles);
+  // ==========================================================================
+  // Data Access
+  // ==========================================================================
+
+  /**
+   * Get raw data
+   */
+  getData(): ProjectType {
+    return this.data;
   }
 
-  async getUsers(): Promise<Array<ProjectUser & { email: string }>> {
-    return Project.listUsers(this.id);
+  /**
+   * Convert to JSON
+   */
+  toJSON(): ProjectType & { role?: ProjectRole } {
+    return { ...this.data, role: this._role };
   }
 
-  // Static methods
-  static async get(id: string, options?: TableOptions): Promise<Project | null> {
-    const data = await getById<ProjectType>(CACHE_SCOPE, META_TABLE, id, options);
-    return data ? new Project(data) : null;
+  // ==========================================================================
+  // Update Methods
+  // ==========================================================================
+
+  /**
+   * Update internal data (called after repository update)
+   */
+  setData(data: ProjectType): void {
+    this.data = data;
   }
 
-  static async getByTitle(title: string, options?: TableOptions): Promise<Project | null> {
-    const data = await getByCondition<ProjectType>(META_TABLE, { title, deleted: false }, options);
-    return data ? new Project(data) : null;
+  /**
+   * Set user's role
+   */
+  setRole(role: ProjectRole): void {
+    this._role = role;
   }
 
-  static async createProject(data: {
-    title: string;
-    prefix?: string;
-    description?: string;
-    org_id?: string;
-    meta?: Record<string, unknown>;
-  }, options?: TableOptions): Promise<Project> {
-    const db = options?.knex || getDb();
-    const now = new Date();
-
-    const prefix = data.prefix || data.title.toLowerCase().replace(/[^a-z0-9]+/g, '_').slice(0, 10);
-    const id = generateId();
-
-    const projectData: Partial<ProjectType> = {
-      id,
-      title: data.title,
-      prefix,
-      description: data.description,
-      org_id: data.org_id,
-      is_meta: false,
-      deleted: false,
-      order: 0,
-      meta: data.meta,
-      created_at: now,
-      updated_at: now,
-    };
-
-    await db(META_TABLE).insert(projectData);
-    
-    const project = await this.get(id, { ...options, skipCache: true });
-    if (!project) throw new Error('Failed to create project');
-
-    if (!options?.skipCache) {
-      const cache = NocoCache.getInstance();
-      await cache.set(`${CACHE_SCOPE}:${id}`, project.getData());
-      await cache.invalidateList(CACHE_SCOPE, 'all');
-    }
-
-    return project;
-  }
-
-  static async update(id: string, data: Partial<Pick<ProjectType, 'title' | 'description' | 'order' | 'color' | 'meta'>>, options?: TableOptions): Promise<void> {
-    await updateRecord<ProjectType>(CACHE_SCOPE, META_TABLE, id, data, options);
-    if (!options?.skipCache) {
-      await invalidateListCache(CACHE_SCOPE, 'all');
-    }
-  }
-
-  static async softDelete(id: string, options?: TableOptions): Promise<void> {
-    await updateRecord<ProjectType>(CACHE_SCOPE, META_TABLE, id, { deleted: true }, options);
-    if (!options?.skipCache) {
-      const cache = NocoCache.getInstance();
-      await cache.del(`${CACHE_SCOPE}:${id}`);
-      await cache.invalidateList(CACHE_SCOPE, 'all');
-    }
-  }
-
-  static async delete(id: string, options?: TableOptions): Promise<number> {
-    const result = await deleteRecord(CACHE_SCOPE, META_TABLE, id, options);
-    if (!options?.skipCache) {
-      await invalidateListCache(CACHE_SCOPE, 'all');
-    }
-    return result;
-  }
-
-  static async list(options?: TableOptions): Promise<Project[]> {
-    const data = await listRecords<ProjectType>(
-      CACHE_SCOPE,
-      META_TABLE,
-      'all',
-      { condition: { deleted: false }, orderBy: { order: 'asc', created_at: 'desc' } },
-      options
-    );
-    return data.map(d => new Project(d));
-  }
-
-  static async listForUser(userId: string, options?: TableOptions): Promise<Project[]> {
-    const cache = NocoCache.getInstance();
-    const cacheKey = `projects:user:${userId}`;
-
-    if (!options?.skipCache) {
-      const cached = await cache.get<ProjectType[]>(cacheKey);
-      if (cached) return cached.map(d => new Project(d));
-    }
-
-    const db = options?.knex || getDb();
-    const results = await db
-      .select('p.*')
-      .from(`${META_TABLE} as p`)
-      .join(`${MetaTable.PROJECT_USERS} as pu`, 'p.id', 'pu.project_id')
-      .where('pu.user_id', userId)
-      .where('p.deleted', false)
-      .orderBy('pu.order', 'asc')
-      .orderBy('p.created_at', 'desc');
-
-    if (!options?.skipCache) {
-      await cache.set(cacheKey, results, 300);
-    }
-
-    return results.map((d: ProjectType) => new Project(d));
-  }
-
-  static async count(condition?: Record<string, unknown>): Promise<number> {
-    return countRecords(META_TABLE, { deleted: false, ...condition });
-  }
-
-  // Project User Management
-  static async addUser(projectId: string, userId: string, roles: ProjectRole = 'viewer', options?: TableOptions): Promise<string> {
-    const db = options?.knex || getDb();
-    const now = new Date();
-    const id = generateId();
-
-    const data: Partial<ProjectUser> = {
-      id,
-      project_id: projectId,
-      user_id: userId,
-      roles,
-      starred: false,
-      hidden: false,
-      order: 0,
-      created_at: now,
-      updated_at: now,
-    };
-
-    await db(MetaTable.PROJECT_USERS).insert(data);
-
-    if (!options?.skipCache) {
-      const cache = NocoCache.getInstance();
-      await cache.del(`projects:user:${userId}`);
-    }
-
-    return id;
-  }
-
-  static async updateUserRole(projectId: string, userId: string, roles: ProjectRole, options?: TableOptions): Promise<void> {
-    const db = options?.knex || getDb();
-    await db(MetaTable.PROJECT_USERS)
-      .where({ project_id: projectId, user_id: userId })
-      .update({ roles, updated_at: new Date() });
-    
-    if (!options?.skipCache) {
-      const cache = NocoCache.getInstance();
-      await cache.del(`projects:user:${userId}`);
-    }
-  }
-
-  static async removeUser(projectId: string, userId: string, options?: TableOptions): Promise<void> {
-    const db = options?.knex || getDb();
-    await db(MetaTable.PROJECT_USERS)
-      .where({ project_id: projectId, user_id: userId })
-      .delete();
-    
-    if (!options?.skipCache) {
-      const cache = NocoCache.getInstance();
-      await cache.del(`projects:user:${userId}`);
-    }
-  }
-
-  static async getUserRole(projectId: string, userId: string, options?: TableOptions): Promise<ProjectRole | null> {
-    const db = options?.knex || getDb();
-    const result = await db(MetaTable.PROJECT_USERS)
-      .where({ project_id: projectId, user_id: userId })
-      .select('roles')
-      .first();
-    return result?.roles as ProjectRole | null;
-  }
-
-  static async listUsers(projectId: string, options?: TableOptions): Promise<Array<ProjectUser & { email: string; firstname?: string; lastname?: string }>> {
-    const db = options?.knex || getDb();
-    return db
-      .select('pu.*', 'u.email', 'u.firstname', 'u.lastname')
-      .from(`${MetaTable.PROJECT_USERS} as pu`)
-      .join(`${MetaTable.USERS} as u`, 'pu.user_id', 'u.id')
-      .where('pu.project_id', projectId)
-      .orderBy('pu.created_at', 'asc');
+  /**
+   * Merge partial data
+   */
+  merge(data: Partial<ProjectType>): void {
+    this.data = { ...this.data, ...data };
   }
 }
 
