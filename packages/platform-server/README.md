@@ -2,7 +2,7 @@
 
 > 低代码平台后端服务，基于 Express.js + AgentDB
 
-版本: 0.98.4
+版本: 1.0.0
 
 ## 概述
 
@@ -24,11 +24,10 @@
 
 ```bash
 # 必需
-META_SERVER_DB=postgres://user:pass@localhost:5432/platform_meta
+DATABASE_URL=postgres://user:pass@localhost:5432/platform
 NC_AUTH_JWT_SECRET=your-secret-key
 
 # 可选
-DATA_SERVER_DB=postgres://user:pass@localhost:5432/platform_data
 REDIS_URL=redis://localhost:6379
 PORT=8080
 NODE_ENV=production
@@ -51,7 +50,7 @@ pnpm start
 import { App } from '@workspace/platform-server';
 
 const app = App.getInstance({
-  metaDbUrl: 'postgres://localhost:5432/platform',
+  dbUrl: 'postgres://localhost:5432/platform',
   auth: {
     jwtSecret: 'your-secret',
     jwtExpiresIn: '1h',
@@ -64,7 +63,9 @@ const app = App.getInstance({
 await app.listen(8080);
 ```
 
-## 系统架构
+## 系统架构 (v1.0.0)
+
+本版本对架构进行了全面优化，采用更标准化的分层设计：
 
 ```
 ┌─────────────────────────────────────────────────────────────────────┐
@@ -74,261 +75,150 @@ await app.listen(8080);
                                     ▼
 ┌─────────────────────────────────────────────────────────────────────┐
 │                        中间件层 (Middleware)                         │
-│  • Request ID 生成  • 结构化日志  • CORS  • Helmet  • Rate Limit    │
+│  • Request ID  • 日志  • CORS  • Helmet  • Rate Limit  • 验证       │
 └─────────────────────────────────────────────────────────────────────┘
                                     │
                                     ▼
 ┌─────────────────────────────────────────────────────────────────────┐
-│                      App.ts (应用入口 - 单例)                        │
-│  • 数据库迁移  • JWT 认证  • API 路由注册  • 错误处理                 │
+│                       控制器层 (Controllers)                         │
+│  AuthController │ UserController │ ProjectController                │
+│  PageController │ FlowController │ TableController                  │
+│                                                                     │
+│  • 统一响应格式  • Zod 验证  • 错误处理  • 权限检查                    │
 └─────────────────────────────────────────────────────────────────────┘
-                                    │
-                    ┌───────────────┼───────────────┐
-                    ▼               ▼               ▼
-┌───────────────────────┐ ┌─────────────────┐ ┌─────────────────────┐
-│    Meta API 层         │ │   Data API 层   │ │   Auth API 层       │
-│  projectApis/tableApis │ │   (agentdb)     │ │   userApis/auth     │
-│  appApis/flowAppApis   │ │                 │ │                     │
-└───────────────────────┘ └─────────────────┘ └─────────────────────┘
                                     │
                                     ▼
 ┌─────────────────────────────────────────────────────────────────────┐
-│                        模型层 (Models)                               │
-│  Project │ Database │ User │ AppModel │ Page │ FlowApp │ Flow      │
+│                        服务层 (Services)                             │
+│  UserService │ ProjectService │ PageService │ FlowService           │
+│                                                                     │
+│  • 业务逻辑封装  • 事务支持  • 缓存策略  • 权限验证                     │
+└─────────────────────────────────────────────────────────────────────┘
+                                    │
+                                    ▼
+┌─────────────────────────────────────────────────────────────────────┐
+│                        数据层 (Models/DAL)                           │
+│  User │ Project │ Page │ Flow │ BaseService                        │
+│                                                                     │
+│  • ORM 抽象  • 缓存集成  • 软删除  • 审计追踪                          │
 └─────────────────────────────────────────────────────────────────────┘
                                     │
                     ┌───────────────┴───────────────┐
                     ▼                               ▼
 ┌───────────────────────────────┐   ┌──────────────────────────────┐
-│       NcMetaIO (元数据)        │   │      NocoCache (缓存)        │
-│  metaInsert/Update/Delete/Get │   │  Redis / In-Memory           │
+│       PostgreSQL (Knex)       │   │      NocoCache (缓存)        │
+│  元数据/业务数据存储            │   │  Redis / In-Memory           │
 └───────────────────────────────┘   └──────────────────────────────┘
 ```
 
-## 新特性 (v0.98.4)
+### 新架构特点
 
-### 1. 集中式错误处理
+#### 1. 标准化 API 响应格式
 
-```typescript
-import { Errors, ApiError, ValidationError } from '@workspace/platform-server';
-
-// 使用预定义错误
-throw Errors.notFound('Project', projectId);
-throw Errors.permissionDenied('delete this resource');
-throw Errors.missingField('title');
-
-// 自定义错误
-throw new ValidationError('Invalid input', [
-  { field: 'email', message: 'Invalid email format', code: 'invalid_format' }
-]);
-```
-
-### 2. 请求验证 (Zod)
+所有 API 返回统一格式：
 
 ```typescript
-import { validate, validateBody, z } from '@workspace/platform-server';
-
-const CreateUserSchema = z.object({
-  email: z.string().email(),
-  password: z.string().min(8),
-  name: z.string().optional(),
-});
-
-router.post('/users', validateBody(CreateUserSchema), async (req, res) => {
-  const { email, password, name } = req.validatedBody;
-  // 验证已通过
-});
-```
-
-### 3. 结构化日志 & 请求追踪
-
-```typescript
-import { initLogger, getLogger, requestLoggingMiddleware } from '@workspace/platform-server';
-
-// 初始化日志
-initLogger({
-  serviceName: 'platform-server',
-  logLevel: 'info',
-  jsonFormat: process.env.NODE_ENV === 'production',
-});
-
-// 使用日志
-const logger = getLogger();
-logger.info('User created', { userId: user.id, email: user.email });
-logger.error('Failed to create user', error, { email });
-
-// 中间件自动添加请求ID
-app.use(requestIdMiddleware());
-app.use(requestLoggingMiddleware());
-```
-
-### 4. 健康检查
-
-```typescript
-import { createHealthRouter, performHealthCheck } from '@workspace/platform-server';
-
-// 添加健康检查路由
-app.use('/health', createHealthRouter(() => db, { version: '0.98.4' }));
-
-// 手动检查
-const health = await performHealthCheck(db);
-// {
-//   status: 'healthy',
-//   components: [
-//     { name: 'database', status: 'healthy', latencyMs: 5 },
-//     { name: 'cache', status: 'healthy', latencyMs: 2 },
-//     { name: 'memory', status: 'healthy', heapPercentage: 45 }
-//   ]
-// }
-```
-
-端点:
-- `GET /health` - 完整健康检查
-- `GET /health/live` - 存活探针
-- `GET /health/ready` - 就绪探针
-- `GET /health/detailed` - 详细检查 (含进程信息)
-
-### 5. 灵活的限流
-
-```typescript
-import { 
-  createRateLimit, 
-  createRateLimitFromPreset,
-  RateLimitPresets 
-} from '@workspace/platform-server';
-
-// 使用预设
-app.use('/api/auth', createRateLimitFromPreset('auth')); // 15分钟10次
-app.use('/api/data', createRateLimitFromPreset('data')); // 1分钟200次
-
-// 自定义配置
-app.use(createRateLimit({
-  windowMs: 60 * 1000,
-  max: 50,
-  useUserId: true, // 按用户限流
-  message: 'Too many requests',
-}));
-
-// 预设列表
-// - auth: 15分钟10次 (登录/注册)
-// - passwordReset: 1小时3次
-// - api: 1分钟100次
-// - apiStrict: 1分钟20次
-// - data: 1分钟200次
-// - export: 1小时10次
-// - bulk: 1分钟5次
-// - public: 1分钟30次
-```
-
-### 6. 分页支持
-
-```typescript
-import { paginatedQuery, parsePaginationOptions } from '@workspace/platform-server';
-
-// 基本分页
-const result = await paginatedQuery({
-  db,
-  table: 'projects',
-  condition: { deleted: false },
-  pagination: { page: 1, limit: 25 },
-  sort: { sortBy: 'created_at', sortOrder: 'desc' },
-});
-
-// 结果
+// 成功响应
 {
-  list: [...],
-  pageInfo: {
-    page: 1,
-    limit: 25,
-    offset: 0,
-    totalCount: 100,
-    totalPages: 4,
-    hasNextPage: true,
-    hasPreviousPage: false
+  "success": true,
+  "data": { ... },
+  "meta": {
+    "timestamp": "2024-01-01T00:00:00.000Z"
   }
 }
 
-// 游标分页
-const cursorResult = await cursorPaginatedQuery(db, 'projects', {
-  cursor: 'base64encodedid',
-  limit: 25,
-  direction: 'forward'
-});
-```
+// 列表响应
+{
+  "success": true,
+  "data": [...],
+  "meta": {
+    "total": 100,
+    "page": 1,
+    "pageSize": 25,
+    "totalPages": 4,
+    "hasMore": true,
+    "timestamp": "2024-01-01T00:00:00.000Z"
+  }
+}
 
-### 7. 增强的认证
-
-```typescript
-import { 
-  generateTokenPair, 
-  refreshTokenPair,
-  setAuthCookies,
-  blacklistToken
-} from '@workspace/platform-server';
-
-// 生成令牌对
-const tokens = generateTokenPair({ id: user.id, email: user.email });
-// { accessToken: '...', refreshToken: '...', expiresIn: 3600 }
-
-// 刷新令牌
-const newTokens = await refreshTokenPair(oldRefreshToken);
-
-// 设置安全Cookie
-setAuthCookies(res, tokens);
-
-// 注销时使令牌失效
-blacklistToken(oldToken);
-```
-
-### 8. 审计日志
-
-```typescript
-import { logAuditEvent } from '@workspace/platform-server';
-
-logAuditEvent({
-  action: 'project.create',
-  resourceType: 'project',
-  resourceId: project.id,
-  userId: user.id,
-  projectId: project.id,
-  changes: {
-    title: { before: null, after: 'New Project' }
+// 错误响应
+{
+  "success": false,
+  "error": {
+    "code": "AUTH_001",
+    "message": "Authentication required",
+    "details": [...]
   },
-  metadata: { source: 'api' }
-});
+  "meta": {
+    "timestamp": "2024-01-01T00:00:00.000Z"
+  }
+}
 ```
 
-### 9. 缓存优化
+#### 2. 服务层抽象
+
+```typescript
+import { UserService, ProjectService, PageService, FlowService } from '@workspace/platform-server';
+
+// 用户操作
+const user = await UserService.signup({ email, password });
+const authResult = await UserService.signin({ email, password });
+
+// 项目操作
+const project = await ProjectService.createProject({ title, description }, ownerId);
+const projects = await ProjectService.listForUserPaginated(userId, page, pageSize);
+
+// 页面操作
+const page = await PageService.createPage({ project_id, title, route });
+await PageService.reorder(projectId, orders);
+
+// 工作流操作
+const flow = await FlowService.createFlow({ project_id, title, trigger_type });
+await FlowService.publish(flowId);
+```
+
+#### 3. 响应工具函数
 
 ```typescript
 import { 
-  cacheAside, 
-  cacheAsideList,
-  invalidateRelated,
-  warmCache 
+  sendSuccess, 
+  sendCreated, 
+  sendList, 
+  parsePagination 
 } from '@workspace/platform-server';
 
-// Cache-aside 模式
-const project = await cacheAside(
-  `project:${id}`,
-  () => Project.findById(id),
-  { ttl: 3600 }
-);
+// 在控制器中使用
+async function list(req, res, next) {
+  const pagination = parsePagination(req.query);
+  const result = await service.list(pagination.page, pagination.pageSize);
+  
+  sendList(res, result.data, {
+    total: result.total,
+    page: result.page,
+    pageSize: result.pageSize,
+  });
+}
+```
 
-// 批量失效
-await invalidateRelated([
-  { scope: CacheScope.PROJECT, id: projectId },
-  { scope: CacheScope.PROJECT, listKey: 'all' },
-  { scope: CacheScope.APP, listKey: projectId },
-]);
+#### 4. 基础服务类
 
-// 缓存预热
-await warmCache({
-  scope: CacheScope.PROJECT,
-  fetchAll: () => Project.list(),
-  ttl: 3600,
-  batchSize: 100,
-});
+创建新服务只需继承 `BaseService`：
+
+```typescript
+import { BaseService, CacheScope, MetaTable } from '@workspace/platform-server';
+
+class MyService extends BaseService<MyEntity> {
+  protected tableName = MetaTable.MY_TABLE;
+  protected cacheScope = CacheScope.MY_SCOPE;
+  protected entityName = 'MyEntity';
+  
+  // 自定义方法
+  async customOperation(id: string) {
+    const entity = await this.getByIdOrFail(id);
+    // ...业务逻辑
+    return this.update(id, changes);
+  }
+}
 ```
 
 ## API 路由
@@ -346,17 +236,32 @@ await warmCache({
 | User | `GET /api/v1/db/users/me` | 获取当前用户 |
 | User | `PATCH /api/v1/db/users/me` | 更新个人信息 |
 | User | `POST /api/v1/db/users/me/password` | 修改密码 |
+| User | `GET /api/v1/db/users` | 用户列表 (管理员) |
+| User | `GET/PATCH/DELETE /api/v1/db/users/:id` | 用户管理 (管理员) |
 | Project | `GET/POST /api/v1/db/meta/projects` | 项目列表/创建 |
 | Project | `GET/PATCH/DELETE /api/v1/db/meta/projects/:id` | 项目详情/更新/删除 |
-| Project | `GET/POST /api/v1/db/meta/projects/:id/users` | 项目成员 |
+| Project | `GET/POST /api/v1/db/meta/projects/:id/users` | 项目成员管理 |
+| Project | `PATCH/DELETE /api/v1/db/meta/projects/:id/users/:userId` | 成员角色/移除 |
 | Table | `GET/POST /api/v1/db/meta/projects/:id/tables` | 表列表/创建 |
-| Table | `POST /api/v1/db/meta/projects/:id/tables/:id/columns` | 添加列 |
+| Table | `GET/PATCH/DELETE /api/v1/db/meta/projects/:id/tables/:tableId` | 表详情/更新/删除 |
+| Table | `POST /api/v1/db/meta/projects/:id/tables/:tableId/columns` | 添加列 |
+| Table | `PATCH/DELETE /api/v1/db/meta/projects/:id/tables/:tableId/columns/:colId` | 列更新/删除 |
 | Table | `POST /api/v1/db/meta/projects/:id/tables/links` | 创建关联 |
 | Table | `GET /api/v1/db/meta/projects/:id/tables/schema/export` | 导出Schema |
-| App | `GET/POST /api/v1/db/meta/projects/:id/apps` | 应用列表/创建 |
-| App | `POST /api/v1/db/meta/projects/:id/apps/:id/publish` | 发布应用 |
-| Page | `GET/POST /api/v1/db/meta/apps/:id/pages` | 页面列表/创建 |
+| Table | `POST /api/v1/db/meta/projects/:id/tables/schema/import` | 导入Schema |
+| Table | `POST /api/v1/db/meta/projects/:id/tables/schema/save` | 保存Schema |
+| Page | `GET/POST /api/v1/db/meta/projects/:id/pages` | 页面列表/创建 |
+| Page | `GET /api/v1/db/meta/projects/:id/pages/by-route` | 按路由获取页面 |
+| Page | `GET/PATCH/DELETE /api/v1/db/meta/projects/:id/pages/:pageId` | 页面详情/更新/删除 |
+| Page | `POST /api/v1/db/meta/projects/:id/pages/:pageId/save` | 保存页面 |
+| Page | `POST /api/v1/db/meta/projects/:id/pages/:pageId/duplicate` | 复制页面 |
+| Page | `POST /api/v1/db/meta/projects/:id/pages/reorder` | 页面排序 |
 | Flow | `GET/POST /api/v1/db/meta/projects/:id/flows` | 工作流列表/创建 |
+| Flow | `GET/PATCH/DELETE /api/v1/db/meta/projects/:id/flows/:flowId` | 工作流详情/更新/删除 |
+| Flow | `POST /api/v1/db/meta/projects/:id/flows/:flowId/save` | 保存工作流 |
+| Flow | `POST /api/v1/db/meta/projects/:id/flows/:flowId/publish` | 发布工作流 |
+| Flow | `POST /api/v1/db/meta/projects/:id/flows/:flowId/enable` | 启用工作流 |
+| Flow | `POST /api/v1/db/meta/projects/:id/flows/:flowId/disable` | 禁用工作流 |
 | Data | `GET/POST /api/v1/db/data/:projectId/:tableName` | 数据 CRUD |
 
 ## 错误码
@@ -382,8 +287,7 @@ await warmCache({
 ```typescript
 interface AppConfig {
   // 数据库
-  metaDbUrl?: string;           // 元数据数据库连接
-  dataDbUrl?: string;           // 数据数据库连接
+  dbUrl?: string;               // 数据库连接URL
   dbType?: 'pg' | 'mysql' | 'sqlite';
   
   // 缓存
@@ -452,8 +356,21 @@ pnpm test
 pnpm build
 
 # 类型检查
-pnpm tsc --noEmit
+pnpm exec tsc --noEmit
 ```
+
+## 更新日志
+
+### v1.0.0 (架构优化)
+
+- **新增**: 标准化 API 响应格式 (`sendSuccess`, `sendList`, `sendCreated`)
+- **新增**: 服务层抽象 (`UserService`, `ProjectService`, `PageService`, `FlowService`)
+- **新增**: 基础服务类 (`BaseService`) 提供统一 CRUD 操作
+- **新增**: 响应工具函数 (`utils/response.ts`)
+- **优化**: 控制器重构，统一错误处理和验证
+- **优化**: 更清晰的代码分层结构
+- **优化**: 完整的 TypeScript 类型支持
+- **优化**: API 路由更加 RESTful
 
 ## License
 

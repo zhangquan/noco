@@ -1,6 +1,6 @@
 {
   "name": "@workspace/platform-server",
-  "version": "0.98.4",
+  "version": "1.0.0",
   "description": "Low-code platform backend service based on Express.js and AgentDB",
   "type": "module",
   "main": "dist/index.js",

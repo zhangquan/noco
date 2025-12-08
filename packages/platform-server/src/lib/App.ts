@@ -1,5 +1,6 @@
 /**
  * App - Main Application Entry Point (Singleton)
+ * Optimized architecture with standardized API patterns
  * @module lib/App
  */
 
@@ -21,7 +22,7 @@ import {
   createFlowRouter,
   createAuthRouter,
   createUserRouter,
-} from '../api/index.js';
+} from '../api/controllers/index.js';
 import {
   requestIdMiddleware,
   requestLoggingMiddleware,
@@ -261,17 +262,22 @@ export class App {
     const basePath = this.config.apiBasePath || '/api/v1/db';
     const db = this.dbManager.getDb();
 
-    // Health check routes with comprehensive checks
+    // Health check routes
     const healthRouter = createHealthRouter(
       () => db,
-      { version: '0.98.3' }
+      { version: '1.0.0' }
     );
     this.app.use('/health', healthRouter);
 
-    // Auth routes with strict rate limiting
+    // ========================================================================
+    // Auth Routes (public, with rate limiting)
+    // ========================================================================
     const authRateLimiter = createRateLimitFromPreset('auth');
     this.app.use(`${basePath}/auth`, authRateLimiter, createAuthRouter());
 
+    // ========================================================================
+    // Protected Routes
+    // ========================================================================
     const authMiddleware = requireAuth(passport);
     const optionalAuthMiddleware = optionalAuth(passport);
 
@@ -281,16 +287,18 @@ export class App {
     // Project routes
     this.app.use(`${basePath}/meta/projects`, authMiddleware, createProjectRouter());
     
-    // Table routes
+    // Table routes (nested under projects)
     this.app.use(`${basePath}/meta/projects/:projectId/tables`, authMiddleware, createTableRouter());
     
-    // Page routes (pages belong to project directly)
+    // Page routes (nested under projects)
     this.app.use(`${basePath}/meta/projects/:projectId/pages`, authMiddleware, createPageRouter());
     
-    // Flow routes (flows belong to project directly)
+    // Flow routes (nested under projects)
     this.app.use(`${basePath}/meta/projects/:projectId/flows`, authMiddleware, createFlowRouter());
 
-    // Data API routes - only if AgentDB is available
+    // ========================================================================
+    // Data API Routes (if AgentDB available)
+    // ========================================================================
     const agentDb = await getAgentDb();
     if (agentDb) {
       const { createPersistentSchemaManager, createRestApi } = agentDb;
@@ -298,11 +306,12 @@ export class App {
       // Cache for SchemaManagers
       const schemaManagerCache = new Map<string, { manager: any; lastAccess: number }>();
       
-      // Clean up cache periodically
+      // Clean up cache periodically (every minute)
       setInterval(() => {
         const now = Date.now();
+        const maxIdleTime = 5 * 60 * 1000; // 5 minutes
         for (const [key, entry] of schemaManagerCache.entries()) {
-          if (now - entry.lastAccess > 5 * 60 * 1000) { // 5 minutes idle
+          if (now - entry.lastAccess > maxIdleTime) {
             schemaManagerCache.delete(key);
           }
         }
@@ -310,35 +319,44 @@ export class App {
 
       const dataRateLimiter = createRateLimitFromPreset('data');
       
-      this.app.use(`${basePath}/data/:projectId`, optionalAuthMiddleware, dataRateLimiter, async (req: Request, res: Response, next: NextFunction) => {
-        try {
-          const { projectId } = req.params;
-          const cacheKey = `project:${projectId}`;
-          
-          // Get or create SchemaManager with caching
-          let cached = schemaManagerCache.get(cacheKey);
-          if (!cached) {
-            const manager = createPersistentSchemaManager({ db, namespace: cacheKey });
-            try { await manager.load(); } catch { /* No schema yet */ }
-            cached = { manager, lastAccess: Date.now() };
-            schemaManagerCache.set(cacheKey, cached);
-          } else {
-            cached.lastAccess = Date.now();
-          }
+      this.app.use(
+        `${basePath}/data/:projectId`,
+        optionalAuthMiddleware,
+        dataRateLimiter,
+        async (req: Request, res: Response, next: NextFunction) => {
+          try {
+            const { projectId } = req.params;
+            const cacheKey = `project:${projectId}`;
+            
+            // Get or create SchemaManager with caching
+            let cached = schemaManagerCache.get(cacheKey);
+            if (!cached) {
+              const manager = createPersistentSchemaManager({ db, namespace: cacheKey });
+              try {
+                await manager.load();
+              } catch {
+                // No schema yet, that's fine
+              }
+              cached = { manager, lastAccess: Date.now() };
+              schemaManagerCache.set(cacheKey, cached);
+            } else {
+              cached.lastAccess = Date.now();
+            }
 
-          const tables = cached.manager.getTables();
-          const dataRouter = createRestApi({
-            db,
-            tables,
-            basePath: '',
-            enablePublicApi: true,
-            enableExportApi: true,
-          });
-          dataRouter(req as any, res as any, next);
-        } catch (error) {
-          next(error);
+            const tables = cached.manager.getTables();
+            const dataRouter = createRestApi({
+              db,
+              tables,
+              basePath: '',
+              enablePublicApi: true,
+              enableExportApi: true,
+            });
+            dataRouter(req as any, res as any, next);
+          } catch (error) {
+            next(error);
+          }
         }
-      });
+      );
     }
 
     console.log('✅ Routes registered');
@@ -353,7 +371,7 @@ export class App {
     // 404 handler
     this.app.use(notFoundHandler());
 
-    // Global error handler
+    // Global error handler with standardized response format
     this.app.use(createErrorHandler({
       includeStack: process.env.NODE_ENV !== 'production',
       logErrors: true,
