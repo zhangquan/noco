@@ -15,8 +15,8 @@ import {
   updateRecord,
   deleteRecord,
   countRecords,
-  type BaseModelOptions,
-} from './BaseModel.js';
+  type TableOptions,
+} from './Table.js';
 
 const CACHE_SCOPE = CacheScope.USER;
 const META_TABLE = MetaTable.USERS;
@@ -67,12 +67,12 @@ export class User {
   }
 
   // Static methods
-  static async get(id: string, options?: BaseModelOptions): Promise<User | null> {
+  static async get(id: string, options?: TableOptions): Promise<User | null> {
     const data = await getById<UserType>(CACHE_SCOPE, META_TABLE, id, options);
     return data ? new User(data) : null;
   }
 
-  static async getByEmail(email: string, options?: BaseModelOptions): Promise<User | null> {
+  static async getByEmail(email: string, options?: TableOptions): Promise<User | null> {
     const cache = NocoCache.getInstance();
     const cacheKey = `${CACHE_SCOPE}:email:${email.toLowerCase()}`;
 
@@ -100,7 +100,7 @@ export class User {
     lastname?: string;
     roles?: UserRole;
     invite_token?: string;
-  }, options?: BaseModelOptions): Promise<User> {
+  }, options?: TableOptions): Promise<User> {
     const db = options?.knex || getDb();
     const now = new Date();
 
@@ -139,7 +139,7 @@ export class User {
     return user;
   }
 
-  static async update(id: string, data: Partial<Pick<UserType, 'email' | 'password' | 'firstname' | 'lastname' | 'roles' | 'org_selected_id' | 'email_verified' | 'reset_password_token' | 'reset_password_expires'>>, options?: BaseModelOptions): Promise<void> {
+  static async update(id: string, data: Partial<Pick<UserType, 'email' | 'password' | 'firstname' | 'lastname' | 'roles' | 'org_selected_id' | 'email_verified' | 'reset_password_token' | 'reset_password_expires'>>, options?: TableOptions): Promise<void> {
     const updateData: Partial<UserType> = { ...data };
 
     if (data.password) {
@@ -155,7 +155,7 @@ export class User {
     await updateRecord<UserType>(CACHE_SCOPE, META_TABLE, id, updateData, options);
   }
 
-  static async delete(id: string, options?: BaseModelOptions): Promise<number> {
+  static async delete(id: string, options?: TableOptions): Promise<number> {
     const user = await this.get(id, options);
     if (user) {
       const cache = NocoCache.getInstance();
@@ -164,7 +164,7 @@ export class User {
     return deleteRecord(CACHE_SCOPE, META_TABLE, id, options);
   }
 
-  static async list(options?: BaseModelOptions): Promise<User[]> {
+  static async list(options?: TableOptions): Promise<User[]> {
     const data = await listRecords<UserType>(
       CACHE_SCOPE,
       META_TABLE,

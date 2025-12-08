@@ -1,6 +1,6 @@
 /**
- * BaseModel - Helper functions for metadata models
- * @module models/BaseModel
+ * Table - Helper functions for metadata table operations
+ * @module models/Table
  */
 
 import type { Knex } from 'knex';
@@ -12,7 +12,7 @@ import { CacheScope, MetaTable } from '../types/index.js';
 // Types
 // ============================================================================
 
-export interface BaseModelOptions {
+export interface TableOptions {
   /** Custom Knex instance (for transactions) */
   knex?: Knex;
   /** Skip cache operations */
@@ -36,7 +36,7 @@ function getCache(): NocoCache {
   return NocoCache.getInstance();
 }
 
-function getKnex(options?: BaseModelOptions): Knex {
+function getKnex(options?: TableOptions): Knex {
   return options?.knex || getDb();
 }
 
@@ -58,7 +58,7 @@ export async function getById<T extends object>(
   cacheScope: CacheScope,
   metaTable: MetaTable,
   id: string,
-  options?: BaseModelOptions
+  options?: TableOptions
 ): Promise<T | null> {
   const cache = getCache();
   const db = getKnex(options);
@@ -84,7 +84,7 @@ export async function getById<T extends object>(
 export async function getByCondition<T extends object>(
   metaTable: MetaTable,
   condition: Record<string, unknown>,
-  options?: BaseModelOptions
+  options?: TableOptions
 ): Promise<T | null> {
   const db = getKnex(options);
   const data = await db(metaTable).where(condition).first();
@@ -99,7 +99,7 @@ export async function listRecords<T extends object>(
   metaTable: MetaTable,
   listKey: string,
   listOptions?: QueryOptions,
-  options?: BaseModelOptions
+  options?: TableOptions
 ): Promise<T[]> {
   const cache = getCache();
   const db = getKnex(options);
@@ -169,7 +169,7 @@ export async function insertRecord<T extends object>(
   cacheScope: CacheScope,
   metaTable: MetaTable,
   data: Partial<T>,
-  options?: BaseModelOptions
+  options?: TableOptions
 ): Promise<string> {
   const db = getKnex(options);
   const cache = getCache();
@@ -199,7 +199,7 @@ export async function updateRecord<T extends object>(
   metaTable: MetaTable,
   id: string,
   data: Partial<T>,
-  options?: BaseModelOptions
+  options?: TableOptions
 ): Promise<void> {
   const db = getKnex(options);
   const cache = getCache();
@@ -222,7 +222,7 @@ export async function deleteRecord(
   cacheScope: CacheScope,
   metaTable: MetaTable,
   id: string,
-  options?: BaseModelOptions
+  options?: TableOptions
 ): Promise<number> {
   const db = getKnex(options);
   const cache = getCache();
@@ -242,7 +242,7 @@ export async function deleteRecord(
 export async function countRecords(
   metaTable: MetaTable,
   condition?: Record<string, unknown>,
-  options?: BaseModelOptions
+  options?: TableOptions
 ): Promise<number> {
   const db = getKnex(options);
   let query = db(metaTable);

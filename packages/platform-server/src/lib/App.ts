@@ -17,9 +17,8 @@ import { configurePassport, configureAuth, requireAuth, optionalAuth, type AuthC
 import {
   createProjectRouter,
   createTableRouter,
-  createAppRouter,
   createPageRouter,
-  createFlowAppRouter,
+  createFlowRouter,
   createAuthRouter,
   createUserRouter,
 } from '../api/index.js';
@@ -285,14 +284,11 @@ export class App {
     // Table routes
     this.app.use(`${basePath}/meta/projects/:projectId/tables`, authMiddleware, createTableRouter());
     
-    // App routes
-    this.app.use(`${basePath}/meta/projects/:projectId/apps`, authMiddleware, createAppRouter());
+    // Page routes (pages belong to project directly)
+    this.app.use(`${basePath}/meta/projects/:projectId/pages`, authMiddleware, createPageRouter());
     
-    // Page routes
-    this.app.use(`${basePath}/meta/apps/:appId/pages`, authMiddleware, createPageRouter());
-    
-    // Flow routes
-    this.app.use(`${basePath}/meta/projects/:projectId/flows`, authMiddleware, createFlowAppRouter());
+    // Flow routes (flows belong to project directly)
+    this.app.use(`${basePath}/meta/projects/:projectId/flows`, authMiddleware, createFlowRouter());
 
     // Data API routes - only if AgentDB is available
     const agentDb = await getAgentDb();

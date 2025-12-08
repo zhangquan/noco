@@ -95,28 +95,13 @@ export interface Database {
 export type DatabaseType = 'pg' | 'mysql' | 'sqlite' | 'mssql';
 
 // ============================================================================
-// App & Page Types
+// Page Types
 // ============================================================================
-
-export interface AppModel {
-  id: string;
-  project_id: string;
-  title: string;
-  type: AppType;
-  fk_schema_id?: string;
-  fk_publish_schema_id?: string;
-  order?: number;
-  meta?: Record<string, unknown>;
-  status?: 'active' | 'inactive' | 'archived';
-  created_at: Date;
-  updated_at: Date;
-}
-
-export type AppType = 'page' | 'flow' | 'dashboard' | 'form';
 
 export interface Page {
   id: string;
-  app_id: string;
+  project_id: string;
+  group_id?: string;
   title: string;
   route?: string;
   fk_schema_id?: string;
@@ -131,31 +116,22 @@ export interface Page {
 // Flow/Workflow Types
 // ============================================================================
 
-export interface FlowApp {
+export interface Flow {
   id: string;
   project_id: string;
+  group_id?: string;
   title: string;
   fk_schema_id?: string;
   fk_publish_schema_id?: string;
   trigger_type?: FlowTriggerType;
   enabled?: boolean;
+  order?: number;
   meta?: Record<string, unknown>;
   created_at: Date;
   updated_at: Date;
 }
 
 export type FlowTriggerType = 'manual' | 'schedule' | 'webhook' | 'record' | 'form';
-
-export interface Flow {
-  id: string;
-  flow_app_id: string;
-  title: string;
-  version?: number;
-  definition?: Record<string, unknown>;
-  status?: 'draft' | 'published' | 'archived';
-  created_at: Date;
-  updated_at: Date;
-}
 
 // ============================================================================
 // Schema Types
@@ -240,7 +216,6 @@ export enum CacheScope {
   PROJECT = 'project',
   BASE = 'base',
   MODEL = 'model',
-  APP = 'app',
   PAGE = 'page',
   FLOW = 'flow',
   SCHEMA = 'schema',
@@ -258,9 +233,7 @@ export enum MetaTable {
   PROJECTS = 'nc_projects',
   PROJECT_USERS = 'nc_project_users',
   BASES = 'nc_bases',
-  APPS = 'nc_apps',
   PAGES = 'nc_pages',
-  FLOW_APPS = 'nc_flow_apps',
   FLOWS = 'nc_flows',
   SCHEMAS = 'nc_schemas',
   ORGS = 'nc_orgs',

@@ -14,8 +14,8 @@ import {
   updateRecord,
   deleteRecord,
   invalidateListCache,
-  type BaseModelOptions,
-} from './BaseModel.js';
+  type TableOptions,
+} from './Table.js';
 
 const CACHE_SCOPE = CacheScope.PAGE;
 const META_TABLE = MetaTable.PAGES;
@@ -29,7 +29,8 @@ export class Page {
 
   // Getters
   get id(): string { return this.data.id; }
-  get appId(): string { return this.data.app_id; }
+  get projectId(): string { return this.data.project_id; }
+  get groupId(): string | undefined { return this.data.group_id; }
   get title(): string { return this.data.title; }
   get route(): string | undefined { return this.data.route; }
   get schemaId(): string | undefined { return this.data.fk_schema_id; }
@@ -40,30 +41,31 @@ export class Page {
   getData(): PageType { return this.data; }
   toJSON(): PageType { return { ...this.data }; }
 
-  async update(data: Partial<Pick<PageType, 'title' | 'route' | 'order' | 'fk_schema_id' | 'meta'>>): Promise<void> {
+  async update(data: Partial<Pick<PageType, 'title' | 'route' | 'order' | 'group_id' | 'fk_schema_id' | 'meta'>>): Promise<void> {
     await Page.update(this.id, data);
     const updated = await Page.get(this.id, { skipCache: true });
     if (updated) this.data = updated.getData();
   }
 
   // Static methods
-  static async get(id: string, options?: BaseModelOptions): Promise<Page | null> {
+  static async get(id: string, options?: TableOptions): Promise<Page | null> {
     const data = await getById<PageType>(CACHE_SCOPE, META_TABLE, id, options);
     return data ? new Page(data) : null;
   }
 
-  static async getByRoute(appId: string, route: string, options?: BaseModelOptions): Promise<Page | null> {
-    const data = await getByCondition<PageType>(META_TABLE, { app_id: appId, route }, options);
+  static async getByRoute(projectId: string, route: string, options?: TableOptions): Promise<Page | null> {
+    const data = await getByCondition<PageType>(META_TABLE, { project_id: projectId, route }, options);
     return data ? new Page(data) : null;
   }
 
   static async insert(data: {
-    app_id: string;
+    project_id: string;
     title: string;
     route?: string;
+    group_id?: string;
     fk_schema_id?: string;
     meta?: Record<string, unknown>;
-  }, options?: BaseModelOptions): Promise<Page> {
+  }, options?: TableOptions): Promise<Page> {
     const db = options?.knex || getDb();
     const now = new Date();
     const id = generateId();
@@ -72,13 +74,14 @@ export class Page {
 
     const maxOrder = await db
       .from(META_TABLE)
-      .where('app_id', data.app_id)
+      .where('project_id', data.project_id)
       .max('order as max')
       .first();
 
     const pageData: Partial<PageType> = {
       id,
-      app_id: data.app_id,
+      project_id: data.project_id,
+      group_id: data.group_id,
       title: data.title,
       route,
       fk_schema_id: data.fk_schema_id,
@@ -96,41 +99,46 @@ export class Page {
     if (!options?.skipCache) {
       const cache = NocoCache.getInstance();
       await cache.set(`${CACHE_SCOPE}:${id}`, page.getData());
-      await cache.invalidateList(CACHE_SCOPE, data.app_id);
+      await cache.invalidateList(CACHE_SCOPE, data.project_id);
     }
 
     return page;
   }
 
-  static async update(id: string, data: Partial<Pick<PageType, 'title' | 'route' | 'fk_schema_id' | 'fk_publish_schema_id' | 'order' | 'meta'>>, options?: BaseModelOptions): Promise<void> {
+  static async update(id: string, data: Partial<Pick<PageType, 'title' | 'route' | 'fk_schema_id' | 'fk_publish_schema_id' | 'order' | 'group_id' | 'meta'>>, options?: TableOptions): Promise<void> {
     const page = await this.get(id, options);
     await updateRecord<PageType>(CACHE_SCOPE, META_TABLE, id, data, options);
     if (page && !options?.skipCache) {
-      await invalidateListCache(CACHE_SCOPE, page.appId);
+      await invalidateListCache(CACHE_SCOPE, page.projectId);
     }
   }
 
-  static async delete(id: string, options?: BaseModelOptions): Promise<number> {
+  static async delete(id: string, options?: TableOptions): Promise<number> {
     const page = await this.get(id, options);
     const result = await deleteRecord(CACHE_SCOPE, META_TABLE, id, options);
     if (page && !options?.skipCache) {
-      await invalidateListCache(CACHE_SCOPE, page.appId);
+      await invalidateListCache(CACHE_SCOPE, page.projectId);
     }
     return result;
   }
 
-  static async listForApp(appId: string, options?: BaseModelOptions): Promise<Page[]> {
+  static async listForProject(projectId: string, groupId?: string, options?: TableOptions): Promise<Page[]> {
+    const condition: Record<string, unknown> = { project_id: projectId };
+    if (groupId !== undefined) {
+      condition.group_id = groupId;
+    }
+
     const data = await listRecords<PageType>(
       CACHE_SCOPE,
       META_TABLE,
-      appId,
-      { condition: { app_id: appId }, orderBy: { order: 'asc', created_at: 'asc' } },
+      groupId ? `${projectId}:${groupId}` : projectId,
+      { condition, orderBy: { order: 'asc', created_at: 'asc' } },
       options
     );
     return data.map(d => new Page(d));
   }
 
-  static async reorder(appId: string, pageOrders: Array<{ id: string; order: number }>, options?: BaseModelOptions): Promise<void> {
+  static async reorder(projectId: string, pageOrders: Array<{ id: string; order: number }>, options?: TableOptions): Promise<void> {
     const db = options?.knex || getDb();
 
     await db.transaction(async (trx) => {
@@ -140,12 +148,16 @@ export class Page {
     });
 
     if (!options?.skipCache) {
-      await invalidateListCache(CACHE_SCOPE, appId);
+      await invalidateListCache(CACHE_SCOPE, projectId);
       const cache = NocoCache.getInstance();
       for (const { id } of pageOrders) {
         await cache.del(`${CACHE_SCOPE}:${id}`);
       }
     }
+  }
+
+  static async moveToGroup(id: string, groupId: string | null, options?: TableOptions): Promise<void> {
+    await this.update(id, { group_id: groupId || undefined }, options);
   }
 }
 
