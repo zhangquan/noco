@@ -56,7 +56,7 @@ export {
 } from './services/index.js';
 
 // ============================================================================
-// API Layer (Controllers & Base Classes)
+// Controllers Layer (API Handlers)
 // ============================================================================
 
 export {
@@ -99,7 +99,7 @@ export {
   flowSave,
   schemaSave,
   tableSave,
-} from './api/index.js';
+} from './controllers/index.js';
 
 // ============================================================================
 // Response Utilities

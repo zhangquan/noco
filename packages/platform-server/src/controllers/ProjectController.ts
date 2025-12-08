@@ -1,16 +1,16 @@
 /**
  * Project Controller
  * Handles project management endpoints
- * @module api/controllers/ProjectController
+ * @module controllers/ProjectController
  */
 
 import { Router, type Request, type Response, type NextFunction } from 'express';
 import { z } from 'zod';
-import { ProjectService, type CreateProjectInput, type UpdateProjectInput } from '../../services/ProjectService.js';
-import { UserService } from '../../services/UserService.js';
-import { sendSuccess, sendCreated, sendList, parsePagination } from '../../utils/response.js';
-import { ValidationError, AuthenticationError, NotFoundError } from '../../errors/index.js';
-import type { ApiRequest, ProjectRole } from '../../types/index.js';
+import { ProjectService, type CreateProjectInput, type UpdateProjectInput } from '../services/ProjectService.js';
+import { UserService } from '../services/UserService.js';
+import { sendSuccess, sendCreated, sendList, parsePagination } from '../utils/response.js';
+import { ValidationError, AuthenticationError, NotFoundError } from '../errors/index.js';
+import type { ApiRequest, ProjectRole } from '../types/index.js';
 
 // ============================================================================
 // Validation Schemas

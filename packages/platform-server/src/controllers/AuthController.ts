@@ -1,14 +1,14 @@
 /**
  * Auth Controller
  * Handles authentication endpoints
- * @module api/controllers/AuthController
+ * @module controllers/AuthController
  */
 
 import { Router, type Request, type Response, type NextFunction } from 'express';
 import { z } from 'zod';
-import { UserService, type SignupInput, type SigninInput } from '../../services/UserService.js';
-import { sendSuccess, sendCreated } from '../../utils/response.js';
-import { ValidationError } from '../../errors/index.js';
+import { UserService, type SignupInput, type SigninInput } from '../services/UserService.js';
+import { sendSuccess, sendCreated } from '../utils/response.js';
+import { ValidationError } from '../errors/index.js';
 
 // ============================================================================
 // Validation Schemas
