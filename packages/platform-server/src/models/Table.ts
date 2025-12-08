@@ -1,12 +1,22 @@
 /**
- * Table - Helper functions for metadata table operations
- * @module models/Table
+ * Model - Core abstraction layer for table entities
+ * Implements SDK TableType interface and manages table metadata and Schema
+ * @module models/Model
  */
 
 import type { Knex } from 'knex';
 import { NocoCache } from '../cache/index.js';
 import { getDb, generateId } from '../db/index.js';
-import { CacheScope, MetaTable } from '../types/index.js';
+import {
+  CacheScope,
+  MetaTable,
+  ModelTypes,
+  type TableType,
+  type ColumnType,
+  type ViewType,
+  type SchemaData,
+  isTextCol,
+} from '../types/index.js';
 
 // ============================================================================
 // Types
@@ -29,7 +39,555 @@ export interface QueryOptions {
 }
 
 // ============================================================================
-// Helper Functions
+// Model Class
+// ============================================================================
+
+/**
+ * Model class - Core abstraction for table entities
+ * Implements TableType interface from SDK
+ * Uses database as storage interface
+ *
+ * @example
+ * ```typescript
+ * // Get a model
+ * const model = await Model.get(modelId);
+ *
+ * // Get schema with caching
+ * const schema = await model.getSchema();
+ *
+ * // Update schema and trigger publish state
+ * await model.updateSchema({ columns: [...] });
+ *
+ * // Access primary key column
+ * const pkCol = model.primaryKey;
+ * ```
+ */
+export class Model implements TableType {
+  // ==========================================================================
+  // Basic Identification Properties
+  // ==========================================================================
+
+  /** Unique identifier */
+  id: string;
+
+  /** Display title */
+  title: string;
+
+  /** Database table name */
+  table_name?: string;
+
+  /** URL-friendly identifier */
+  slug?: string;
+
+  /** Universal unique identifier */
+  uuid?: string;
+
+  /** Model type (table or view) */
+  type?: ModelTypes;
+
+  // ==========================================================================
+  // Hierarchy Properties
+  // ==========================================================================
+
+  /** Project ID (direct reference) */
+  project_id?: string;
+
+  /** Database/Base ID (direct reference) */
+  base_id?: string;
+
+  /** Group ID */
+  group_id?: string;
+
+  /** Parent model ID */
+  parent_id?: string;
+
+  /** Foreign key to project */
+  fk_project_id?: string;
+
+  /** Foreign key to database/base */
+  fk_base_id?: string;
+
+  // ==========================================================================
+  // Schema Properties
+  // ==========================================================================
+
+  /** Development schema ID */
+  fk_schema_id?: string;
+
+  /** Published schema ID */
+  fk_public_schema_id?: string;
+
+  /** Cached schema object */
+  private _schema?: SchemaData;
+
+  /** Cached published schema */
+  private _publicSchema?: SchemaData;
+
+  /** Columns from schema (cached) */
+  private _columns?: ColumnType[];
+
+  /** Views from schema (cached) */
+  private _views?: ViewType[];
+
+  // ==========================================================================
+  // Configuration Properties
+  // ==========================================================================
+
+  /** Is model enabled */
+  enabled?: boolean;
+
+  /** Is model deleted (soft delete) */
+  deleted?: boolean;
+
+  /** Allow data copy */
+  copy_enabled?: boolean;
+
+  /** Allow data export */
+  export_enabled?: boolean;
+
+  /** Is pinned */
+  pin?: boolean;
+  pinned?: boolean;
+
+  /** Show all fields by default */
+  show_all_fields?: boolean;
+
+  /** Access password */
+  password?: string;
+
+  // ==========================================================================
+  // Publish State Properties
+  // ==========================================================================
+
+  /** Is published */
+  is_publish?: boolean;
+
+  /** Needs publishing (schema changed) */
+  need_publish?: boolean;
+
+  /** Last publish timestamp */
+  publish_at?: Date;
+
+  // ==========================================================================
+  // BigTable Storage Properties
+  // ==========================================================================
+
+  /** Underlying storage table name */
+  bigtable_table_name?: MetaTable;
+
+  /** Is many-to-many junction table */
+  mm?: boolean;
+
+  // ==========================================================================
+  // Metadata Properties
+  // ==========================================================================
+
+  /** Display order */
+  order?: number;
+
+  /** Additional metadata */
+  meta?: Record<string, unknown>;
+
+  /** Description for AI/docs */
+  description?: string;
+
+  /** Hints for AI operations */
+  hints?: string[];
+
+  /** Created timestamp */
+  created_at?: Date;
+
+  /** Updated timestamp */
+  updated_at?: Date;
+
+  // ==========================================================================
+  // Constructor
+  // ==========================================================================
+
+  constructor(data: Partial<TableType>) {
+    this.id = data.id || '';
+    this.title = data.title || '';
+    this.table_name = data.table_name;
+    this.slug = data.slug;
+    this.uuid = data.uuid;
+    this.type = data.type;
+
+    this.project_id = data.project_id;
+    this.base_id = data.base_id;
+    this.group_id = data.group_id;
+    this.parent_id = data.parent_id;
+    this.fk_project_id = data.fk_project_id;
+    this.fk_base_id = data.fk_base_id;
+
+    this.fk_schema_id = data.fk_schema_id;
+    this.fk_public_schema_id = data.fk_public_schema_id;
+    this._columns = data.columns;
+    this._views = data.views;
+
+    this.enabled = data.enabled;
+    this.deleted = data.deleted;
+    this.copy_enabled = data.copy_enabled;
+    this.export_enabled = data.export_enabled;
+    this.pin = data.pin;
+    this.pinned = data.pinned;
+    this.show_all_fields = data.show_all_fields;
+    this.password = data.password;
+
+    this.is_publish = data.is_publish;
+    this.need_publish = data.need_publish;
+    this.publish_at = data.publish_at;
+
+    this.bigtable_table_name = data.bigtable_table_name;
+    this.mm = data.mm;
+
+    this.order = data.order;
+    this.meta = data.meta;
+    this.description = data.description;
+    this.hints = data.hints;
+    this.created_at = data.created_at;
+    this.updated_at = data.updated_at;
+  }
+
+  // ==========================================================================
+  // Schema Methods
+  // ==========================================================================
+
+  /**
+   * Get schema data with caching
+   */
+  async getSchema(options?: TableOptions): Promise<SchemaData | null> {
+    if (this._schema) {
+      return this._schema;
+    }
+
+    if (!this.fk_schema_id) {
+      return null;
+    }
+
+    const db = options?.knex || getDb();
+    const schema = await db(MetaTable.SCHEMAS).where('id', this.fk_schema_id).first();
+    
+    if (schema) {
+      this._schema = schema;
+      // Extract columns and views from schema data
+      if (schema.data?.columns) {
+        this._columns = schema.data.columns as ColumnType[];
+      }
+      if (schema.data?.views) {
+        this._views = schema.data.views as ViewType[];
+      }
+    }
+
+    return schema || null;
+  }
+
+  /**
+   * Update schema and trigger publish state change
+   */
+  async updateSchema(
+    data: Partial<SchemaData>,
+    options?: TableOptions
+  ): Promise<SchemaData | null> {
+    const db = options?.knex || getDb();
+    const now = new Date();
+    let schemaId = this.fk_schema_id;
+
+    if (schemaId) {
+      // Update existing schema
+      await db(MetaTable.SCHEMAS)
+        .where('id', schemaId)
+        .update({ ...data, updated_at: now });
+    } else {
+      // Create new schema
+      schemaId = generateId();
+      const schemaData: Partial<SchemaData> = {
+        id: schemaId,
+        ...data,
+        domain: 'model',
+        fk_domain_id: this.id,
+        fk_project_id: this.project_id || this.fk_project_id,
+        env: 'DEV',
+        created_at: now,
+        updated_at: now,
+      };
+      await db(MetaTable.SCHEMAS).insert(schemaData);
+
+      // Update model with schema reference
+      await db(MetaTable.MODELS)
+        .where('id', this.id)
+        .update({ fk_schema_id: schemaId, updated_at: now });
+      this.fk_schema_id = schemaId;
+    }
+
+    // Clear cached schema
+    this._schema = undefined;
+    this._columns = undefined;
+    this._views = undefined;
+
+    return this.getSchema(options);
+  }
+
+  // ==========================================================================
+  // Primary Key / Primary Value Getters
+  // ==========================================================================
+
+  /**
+   * Get the primary key column
+   */
+  get primaryKey(): ColumnType | undefined {
+    const columns = this._columns || [];
+
+    // First, try to find a column with pk: true
+    const pkColumn = columns.find((col) => col.pk === true);
+    if (pkColumn) {
+      return pkColumn;
+    }
+
+    // Fallback: find column named 'id'
+    return columns.find(
+      (col) => col.column_name === 'id' || col.id === 'id' || col.title?.toLowerCase() === 'id'
+    );
+  }
+
+  /**
+   * Get all primary key columns (for composite keys)
+   */
+  get primaryKeys(): ColumnType[] {
+    const columns = this._columns || [];
+    return columns.filter((col) => col.pk === true);
+  }
+
+  /**
+   * Get the primary value column (display column)
+   */
+  get primaryValue(): ColumnType | undefined {
+    const columns = this._columns || [];
+
+    // First, try to find a column with pv: true
+    const pvColumn = columns.find((col) => col.pv === true);
+    if (pvColumn) {
+      return pvColumn;
+    }
+
+    // Fallback: find first text column that's not the primary key
+    return columns.find((col) => !col.pk && isTextCol(col));
+  }
+
+  // ==========================================================================
+  // Utility Methods
+  // ==========================================================================
+
+  /**
+   * Convert to plain object
+   */
+  toJSON(): TableType {
+    return {
+      id: this.id,
+      title: this.title,
+      table_name: this.table_name,
+      slug: this.slug,
+      uuid: this.uuid,
+      type: this.type,
+      project_id: this.project_id,
+      base_id: this.base_id,
+      group_id: this.group_id,
+      parent_id: this.parent_id,
+      fk_project_id: this.fk_project_id,
+      fk_base_id: this.fk_base_id,
+      fk_schema_id: this.fk_schema_id,
+      fk_public_schema_id: this.fk_public_schema_id,
+      columns: this._columns,
+      views: this._views,
+      enabled: this.enabled,
+      deleted: this.deleted,
+      copy_enabled: this.copy_enabled,
+      export_enabled: this.export_enabled,
+      pin: this.pin,
+      pinned: this.pinned,
+      show_all_fields: this.show_all_fields,
+      password: this.password,
+      is_publish: this.is_publish,
+      need_publish: this.need_publish,
+      publish_at: this.publish_at,
+      bigtable_table_name: this.bigtable_table_name,
+      mm: this.mm,
+      order: this.order,
+      meta: this.meta,
+      description: this.description,
+      hints: this.hints,
+      created_at: this.created_at,
+      updated_at: this.updated_at,
+    };
+  }
+
+  /**
+   * Get raw data
+   */
+  getData(): TableType {
+    return this.toJSON();
+  }
+
+  // ==========================================================================
+  // Static Methods
+  // ==========================================================================
+
+  /**
+   * Get a model by ID
+   */
+  static async get(id: string, options?: TableOptions): Promise<Model | null> {
+    const data = await getById<TableType>(CacheScope.MODEL, MetaTable.MODELS, id, options);
+    return data ? new Model(data) : null;
+  }
+
+  /**
+   * Get a model by title within a project
+   */
+  static async getByTitle(
+    projectId: string,
+    title: string,
+    options?: TableOptions
+  ): Promise<Model | null> {
+    const data = await getByCondition<TableType>(
+      MetaTable.MODELS,
+      { project_id: projectId, title, deleted: false },
+      options
+    );
+    return data ? new Model(data) : null;
+  }
+
+  /**
+   * Check if a title is available within a project
+   */
+  static async checkTitleAvailable(
+    projectId: string,
+    title: string,
+    excludeId?: string,
+    options?: TableOptions
+  ): Promise<boolean> {
+    const existing = await this.getByTitle(projectId, title, options);
+    if (!existing) return true;
+    if (excludeId && existing.id === excludeId) return true;
+    return false;
+  }
+
+  /**
+   * Create a new model
+   */
+  static async insert(
+    data: Partial<TableType> & { project_id: string; title: string },
+    options?: TableOptions
+  ): Promise<Model> {
+    const db = options?.knex || getDb();
+    const cache = NocoCache.getInstance();
+    const now = new Date();
+    const id = generateId();
+
+    // Generate table_name from title if not provided
+    const table_name =
+      data.table_name ||
+      data.title
+        .toLowerCase()
+        .replace(/[^a-z0-9]+/g, '_')
+        .replace(/^_|_$/g, '');
+
+    const modelData: Partial<TableType> = {
+      ...data,
+      id,
+      table_name,
+      enabled: data.enabled ?? true,
+      deleted: false,
+      type: data.type || ModelTypes.TABLE,
+      created_at: now,
+      updated_at: now,
+    };
+
+    await db(MetaTable.MODELS).insert(modelData);
+
+    const model = await this.get(id, { ...options, skipCache: true });
+    if (!model) throw new Error('Failed to create model');
+
+    if (!options?.skipCache) {
+      await cache.set(`${CacheScope.MODEL}:${id}`, model.getData());
+      await cache.invalidateList(CacheScope.MODEL, data.project_id);
+    }
+
+    return model;
+  }
+
+  /**
+   * Update a model
+   */
+  static async update(
+    id: string,
+    data: Partial<TableType>,
+    options?: TableOptions
+  ): Promise<void> {
+    const model = await this.get(id, options);
+    await updateRecord<TableType>(CacheScope.MODEL, MetaTable.MODELS, id, data, options);
+    if (model && !options?.skipCache) {
+      await invalidateListCache(CacheScope.MODEL, model.project_id || '');
+    }
+  }
+
+  /**
+   * Soft delete a model
+   */
+  static async softDelete(id: string, options?: TableOptions): Promise<void> {
+    const model = await this.get(id, options);
+    await updateRecord<TableType>(
+      CacheScope.MODEL,
+      MetaTable.MODELS,
+      id,
+      { deleted: true },
+      options
+    );
+    if (model && !options?.skipCache) {
+      const cache = NocoCache.getInstance();
+      await cache.del(`${CacheScope.MODEL}:${id}`);
+      await cache.invalidateList(CacheScope.MODEL, model.project_id || '');
+    }
+  }
+
+  /**
+   * Hard delete a model
+   */
+  static async delete(id: string, options?: TableOptions): Promise<number> {
+    const model = await this.get(id, options);
+    const result = await deleteRecord(CacheScope.MODEL, MetaTable.MODELS, id, options);
+    if (model && !options?.skipCache) {
+      await invalidateListCache(CacheScope.MODEL, model.project_id || '');
+    }
+    return result;
+  }
+
+  /**
+   * List models for a project
+   */
+  static async listForProject(
+    projectId: string,
+    groupId?: string,
+    options?: TableOptions
+  ): Promise<Model[]> {
+    const condition: Record<string, unknown> = { project_id: projectId, deleted: false };
+    if (groupId !== undefined) {
+      condition.group_id = groupId;
+    }
+
+    const data = await listRecords<TableType>(
+      CacheScope.MODEL,
+      MetaTable.MODELS,
+      groupId ? `${projectId}:${groupId}` : projectId,
+      { condition, orderBy: { order: 'asc', created_at: 'asc' } },
+      options
+    );
+
+    return data.map((d) => new Model(d));
+  }
+
+}
+
+// ============================================================================
+// Helper Functions (kept for backward compatibility)
 // ============================================================================
 
 function getCache(): NocoCache {
@@ -48,7 +606,7 @@ export function genId(): string {
 }
 
 // ============================================================================
-// CRUD Operations
+// CRUD Operations (Generic helpers for other models)
 // ============================================================================
 
 /**
@@ -322,3 +880,6 @@ function applyXcCondition(
 
   return query;
 }
+
+// Export Model as default
+export default Model;
