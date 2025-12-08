@@ -15,7 +15,6 @@ import {
   type ColumnType,
   type ViewType,
   type SchemaData,
-  UITypes,
   isTextCol,
 } from '../types/index.js';
 
@@ -325,9 +324,6 @@ export class Model implements TableType {
     this._columns = undefined;
     this._views = undefined;
 
-    // Update publish state to need_publish
-    await this.updatePublishState(options);
-
     return this.getSchema(options);
   }
 
@@ -375,38 +371,6 @@ export class Model implements TableType {
 
     // Fallback: find first text column that's not the primary key
     return columns.find((col) => !col.pk && isTextCol(col));
-  }
-
-  /**
-   * Check if model has any text columns
-   */
-  hasTextColumn(): boolean {
-    const columns = this._columns || [];
-    return columns.some((col) => isTextCol(col));
-  }
-
-  // ==========================================================================
-  // Property Accessors
-  // ==========================================================================
-
-  /** Get columns (from cached schema) */
-  get columns(): ColumnType[] | undefined {
-    return this._columns;
-  }
-
-  /** Set columns */
-  set columns(cols: ColumnType[] | undefined) {
-    this._columns = cols;
-  }
-
-  /** Get views (from cached schema) */
-  get views(): ViewType[] | undefined {
-    return this._views;
-  }
-
-  /** Set views */
-  set views(views: ViewType[] | undefined) {
-    this._views = views;
   }
 
   // ==========================================================================
@@ -461,40 +425,6 @@ export class Model implements TableType {
    */
   getData(): TableType {
     return this.toJSON();
-  }
-
-  // ==========================================================================
-  // Protected Methods
-  // ==========================================================================
-
-  /**
-   * Update publish state to indicate changes need publishing
-   */
-  protected async updatePublishState(options?: TableOptions): Promise<void> {
-    const projectId = this.project_id || this.fk_project_id;
-    if (!projectId) return;
-
-    const db = options?.knex || getDb();
-    const now = new Date();
-
-    // Check if publish state exists
-    const publishState = await db(MetaTable.PUBLISH_STATES)
-      .where('project_id', projectId)
-      .first();
-
-    if (publishState) {
-      await db(MetaTable.PUBLISH_STATES)
-        .where('project_id', projectId)
-        .update({ status: 'draft', updated_at: now });
-    } else {
-      await db(MetaTable.PUBLISH_STATES).insert({
-        id: generateId(),
-        project_id: projectId,
-        status: 'draft',
-        created_at: now,
-        updated_at: now,
-      });
-    }
   }
 
   // ==========================================================================
@@ -654,30 +584,6 @@ export class Model implements TableType {
     return data.map((d) => new Model(d));
   }
 
-  /**
-   * Reorder models within a project
-   */
-  static async reorder(
-    projectId: string,
-    modelOrders: Array<{ id: string; order: number }>,
-    options?: TableOptions
-  ): Promise<void> {
-    const db = options?.knex || getDb();
-
-    await db.transaction(async (trx) => {
-      for (const { id, order } of modelOrders) {
-        await trx(MetaTable.MODELS).where('id', id).update({ order, updated_at: new Date() });
-      }
-    });
-
-    if (!options?.skipCache) {
-      await invalidateListCache(CacheScope.MODEL, projectId);
-      const cache = NocoCache.getInstance();
-      for (const { id } of modelOrders) {
-        await cache.del(`${CacheScope.MODEL}:${id}`);
-      }
-    }
-  }
 }
 
 // ============================================================================
