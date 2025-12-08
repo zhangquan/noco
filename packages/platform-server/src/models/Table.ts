@@ -17,6 +17,7 @@ import {
   type SchemaData,
   isTextCol,
 } from '../types/index.js';
+import { Schema, type JsonPatchOperation, type SchemaPatchResult } from './Schema.js';
 
 // ============================================================================
 // Types
@@ -253,6 +254,25 @@ export class Model implements TableType {
   // ==========================================================================
 
   /**
+   * Get Schema model instance (DEV environment)
+   */
+  async getSchemaModel(options?: TableOptions): Promise<Schema | null> {
+    return Schema.getOrCreate({
+      domain: 'model',
+      fk_domain_id: this.id,
+      fk_project_id: this.project_id || this.fk_project_id || '',
+      env: 'DEV',
+    }, options);
+  }
+
+  /**
+   * Get published Schema model instance (PRO environment)
+   */
+  async getPublicSchemaModel(options?: TableOptions): Promise<Schema | null> {
+    return Schema.getByDomainAndEnv('model', this.id, 'PRO', options);
+  }
+
+  /**
    * Get schema data with caching
    */
   async getSchema(options?: TableOptions): Promise<SchemaData | null> {
@@ -260,64 +280,102 @@ export class Model implements TableType {
       return this._schema;
     }
 
-    if (!this.fk_schema_id) {
+    const schemaModel = await this.getSchemaModel(options);
+    if (!schemaModel) {
       return null;
     }
 
-    const db = options?.knex || getDb();
-    const schema = await db(MetaTable.SCHEMAS).where('id', this.fk_schema_id).first();
-    
-    if (schema) {
-      this._schema = schema;
-      // Extract columns and views from schema data
-      if (schema.data?.columns) {
-        this._columns = schema.data.columns as ColumnType[];
-      }
-      if (schema.data?.views) {
-        this._views = schema.data.views as ViewType[];
-      }
+    // Convert Schema model data to SchemaData format
+    const schemaData: SchemaData = {
+      id: schemaModel.id,
+      domain: schemaModel.domain,
+      fk_domain_id: schemaModel.domainId,
+      fk_project_id: schemaModel.projectId,
+      data: schemaModel.data,
+      env: schemaModel.env,
+      version: schemaModel.version,
+      created_at: schemaModel.createdAt,
+      updated_at: schemaModel.updatedAt,
+    };
+
+    this._schema = schemaData;
+    this.fk_schema_id = schemaModel.id;
+
+    // Extract columns and views from schema data
+    if (schemaData.data?.columns) {
+      this._columns = schemaData.data.columns as ColumnType[];
+    }
+    if (schemaData.data?.views) {
+      this._views = schemaData.data.views as ViewType[];
     }
 
-    return schema || null;
+    return schemaData;
   }
 
   /**
-   * Update schema and trigger publish state change
+   * Update schema using JSON Patch operations
+   * @param patches - Array of JSON Patch operations
+   * @param options - Database options
+   * @returns Patch result with new version
+   */
+  async patchSchema(
+    patches: JsonPatchOperation[],
+    options?: TableOptions
+  ): Promise<SchemaPatchResult> {
+    const schemaModel = await this.getSchemaModel(options);
+    if (!schemaModel) {
+      throw new Error('Schema not found for model');
+    }
+
+    const result = await schemaModel.applyPatch(patches, options);
+
+    // Clear cached schema
+    this._schema = undefined;
+    this._columns = undefined;
+    this._views = undefined;
+
+    // Mark as needing publish
+    await Model.update(this.id, { need_publish: true }, options);
+    this.need_publish = true;
+
+    return result;
+  }
+
+  /**
+   * Update schema data (full replace)
    */
   async updateSchema(
-    data: Partial<SchemaData>,
+    data: Partial<SchemaData> | Record<string, unknown>,
     options?: TableOptions
   ): Promise<SchemaData | null> {
-    const db = options?.knex || getDb();
-    const now = new Date();
-    let schemaId = this.fk_schema_id;
+    const schemaModel = await this.getSchemaModel(options);
+    const inputData = data as Record<string, unknown>;
+    const schemaData = (inputData.data as Record<string, unknown>) || inputData;
 
-    if (schemaId) {
-      // Update existing schema
-      await db(MetaTable.SCHEMAS)
-        .where('id', schemaId)
-        .update({ ...data, updated_at: now });
-    } else {
-      // Create new schema
-      schemaId = generateId();
-      const schemaData: Partial<SchemaData> = {
-        id: schemaId,
-        ...data,
+    if (!schemaModel) {
+      // Create new schema if not exists
+      const newSchema = await Schema.create({
         domain: 'model',
         fk_domain_id: this.id,
-        fk_project_id: this.project_id || this.fk_project_id,
+        fk_project_id: this.project_id || this.fk_project_id || '',
+        data: schemaData,
         env: 'DEV',
-        created_at: now,
-        updated_at: now,
-      };
-      await db(MetaTable.SCHEMAS).insert(schemaData);
+      }, options);
 
       // Update model with schema reference
+      const db = options?.knex || getDb();
       await db(MetaTable.MODELS)
         .where('id', this.id)
-        .update({ fk_schema_id: schemaId, updated_at: now });
-      this.fk_schema_id = schemaId;
+        .update({ fk_schema_id: newSchema.id, updated_at: new Date() });
+      this.fk_schema_id = newSchema.id;
+    } else {
+      // Update existing schema
+      await schemaModel.updateData(schemaData, options);
     }
+
+    // Mark as needing publish
+    await Model.update(this.id, { need_publish: true }, options);
+    this.need_publish = true;
 
     // Clear cached schema
     this._schema = undefined;
@@ -325,6 +383,80 @@ export class Model implements TableType {
     this._views = undefined;
 
     return this.getSchema(options);
+  }
+
+  /**
+   * Publish schema (copy DEV to PRO)
+   */
+  async publishSchema(options?: TableOptions): Promise<Schema | null> {
+    const schemaModel = await this.getSchemaModel(options);
+    if (!schemaModel) {
+      throw new Error('No schema to publish');
+    }
+
+    const publishedSchema = await schemaModel.publish(options);
+
+    // Update model with published schema reference
+    const db = options?.knex || getDb();
+    await db(MetaTable.MODELS)
+      .where('id', this.id)
+      .update({
+        fk_public_schema_id: publishedSchema.id,
+        is_publish: true,
+        need_publish: false,
+        publish_at: new Date(),
+        updated_at: new Date(),
+      });
+
+    this.fk_public_schema_id = publishedSchema.id;
+    this.is_publish = true;
+    this.need_publish = false;
+    this.publish_at = new Date();
+
+    return publishedSchema;
+  }
+
+  /**
+   * Add a column to schema using JSON Patch
+   */
+  async addColumn(column: ColumnType, options?: TableOptions): Promise<SchemaPatchResult> {
+    return this.patchSchema([
+      { op: 'add', path: '/columns/-', value: column }
+    ], options);
+  }
+
+  /**
+   * Update a column in schema using JSON Patch
+   */
+  async updateColumn(
+    columnIndex: number,
+    updates: Partial<ColumnType>,
+    options?: TableOptions
+  ): Promise<SchemaPatchResult> {
+    const patches: JsonPatchOperation[] = Object.entries(updates).map(([key, value]) => ({
+      op: 'replace' as const,
+      path: `/columns/${columnIndex}/${key}`,
+      value,
+    }));
+    return this.patchSchema(patches, options);
+  }
+
+  /**
+   * Remove a column from schema using JSON Patch
+   */
+  async removeColumn(columnIndex: number, options?: TableOptions): Promise<SchemaPatchResult> {
+    return this.patchSchema([
+      { op: 'remove', path: `/columns/${columnIndex}` }
+    ], options);
+  }
+
+  /**
+   * Add a view to schema using JSON Patch
+   */
+  async addView(view: ViewType, options?: TableOptions): Promise<SchemaPatchResult> {
+    return this.patchSchema([
+      { op: 'add', path: '/views/-', value: view }
+    ], options);
   }
 
   // ==========================================================================

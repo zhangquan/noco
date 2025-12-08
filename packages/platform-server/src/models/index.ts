@@ -19,6 +19,16 @@ export {
   invalidateListCache,
 } from './Table.js';
 
+// Schema model - unified schema management for Table, Page, Flow
+export {
+  Schema,
+  type JsonPatchOp,
+  type JsonPatchOperation,
+  type SchemaRecord,
+  type SchemaCreateOptions,
+  type SchemaPatchResult,
+} from './Schema.js';
+
 // Entity models
 export { User } from './User.js';
 export { Project } from './Project.js';
