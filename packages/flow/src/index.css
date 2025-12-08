@@ -1,0 +1,131 @@
+/**
+ * FlowSDK Global Styles
+ */
+
+/* Base styles */
+.flow-designer {
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+  font-size: 14px;
+  line-height: 1.5715;
+  color: rgba(0, 0, 0, 0.85);
+}
+
+/* Scrollbar styling */
+.flow-designer ::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+.flow-designer ::-webkit-scrollbar-track {
+  background: #f1f1f1;
+  border-radius: 4px;
+}
+
+.flow-designer ::-webkit-scrollbar-thumb {
+  background: #c1c1c1;
+  border-radius: 4px;
+}
+
+.flow-designer ::-webkit-scrollbar-thumb:hover {
+  background: #a1a1a1;
+}
+
+/* Node styles */
+.flow-node {
+  transition: all 0.2s ease;
+}
+
+.flow-node:hover {
+  transform: translateY(-1px);
+}
+
+.flow-node--selected {
+  box-shadow: 0 0 0 2px #1890ff !important;
+}
+
+/* Setter panel styles */
+.setter-panel {
+  padding: 16px;
+}
+
+.setter-panel--empty {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 200px;
+}
+
+.setter-panel__header {
+  margin-bottom: 8px;
+}
+
+.setter-panel__form {
+  margin-top: 8px;
+}
+
+/* Expression binder */
+.expression-binder__toggle {
+  cursor: pointer;
+  padding: 4px;
+  border-radius: 4px;
+  transition: background-color 0.2s;
+}
+
+.expression-binder__toggle:hover {
+  background-color: rgba(0, 0, 0, 0.04);
+}
+
+.expression-binder__toggle--active {
+  color: #1890ff;
+  background-color: rgba(24, 144, 255, 0.1);
+}
+
+/* Data setter */
+.data-setter__row {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
+.data-setter__field {
+  flex: 1;
+}
+
+.data-setter__value {
+  flex: 2;
+}
+
+/* Animation */
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(-10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.flow-node-enter {
+  animation: fadeIn 0.2s ease forwards;
+}
+
+/* Responsive */
+@media (max-width: 768px) {
+  .flow-designer .ant-layout-sider {
+    display: none;
+  }
+}
+
+/* Print styles */
+@media print {
+  .flow-designer .ant-layout-header,
+  .flow-designer .ant-layout-sider {
+    display: none !important;
+  }
+
+  .flow-designer .ant-layout-content {
+    background: white !important;
+  }
+}
