@@ -1,12 +1,25 @@
 /**
- * Table - Helper functions for metadata table operations
- * @module models/Table
+ * Model - Core abstraction layer for table entities
+ * Implements SDK TableType interface and manages table metadata, Schema, and views
+ * @module models/Model
  */
 
 import type { Knex } from 'knex';
 import { NocoCache } from '../cache/index.js';
 import { getDb, generateId } from '../db/index.js';
-import { CacheScope, MetaTable } from '../types/index.js';
+import {
+  CacheScope,
+  MetaTable,
+  ModelTypes,
+  type TableType,
+  type ColumnType,
+  type ViewType,
+  type FilterType,
+  type SortType,
+  type SchemaData,
+  UITypes,
+  isTextCol,
+} from '../types/index.js';
 
 // ============================================================================
 // Types
@@ -29,7 +42,753 @@ export interface QueryOptions {
 }
 
 // ============================================================================
-// Helper Functions
+// NcMeta Interface (Dependency Injection)
+// ============================================================================
+
+interface NcMeta {
+  knex: Knex;
+  metaGet<T>(table: MetaTable, id: string): Promise<T | null>;
+  metaInsert<T>(table: MetaTable, data: Partial<T>): Promise<string>;
+  metaUpdate<T>(table: MetaTable, id: string, data: Partial<T>): Promise<void>;
+  metaDelete(table: MetaTable, id: string): Promise<number>;
+}
+
+// Default ncMeta implementation using getDb
+function getDefaultNcMeta(): NcMeta {
+  const db = getDb();
+  return {
+    knex: db,
+    async metaGet<T>(table: MetaTable, id: string): Promise<T | null> {
+      return db(table).where('id', id).first() as Promise<T | null>;
+    },
+    async metaInsert<T>(table: MetaTable, data: Partial<T>): Promise<string> {
+      const insertData = { ...data } as Record<string, unknown>;
+      if (!insertData.id) insertData.id = generateId();
+      const now = new Date();
+      if (!insertData.created_at) insertData.created_at = now;
+      if (!insertData.updated_at) insertData.updated_at = now;
+      await db(table).insert(insertData);
+      return insertData.id as string;
+    },
+    async metaUpdate<T>(table: MetaTable, id: string, data: Partial<T>): Promise<void> {
+      const updateData = { ...data, updated_at: new Date() } as Record<string, unknown>;
+      await db(table).where('id', id).update(updateData);
+    },
+    async metaDelete(table: MetaTable, id: string): Promise<number> {
+      return db(table).where('id', id).delete();
+    },
+  };
+}
+
+// ============================================================================
+// Model Class
+// ============================================================================
+
+/**
+ * Model class - Core abstraction for table entities
+ * Implements TableType interface from SDK
+ *
+ * @example
+ * ```typescript
+ * // Get a model
+ * const model = await Model.get(modelId);
+ *
+ * // Get schema with caching
+ * const schema = await model.getSchema();
+ *
+ * // Update schema and trigger publish state
+ * await model.updateSchema({ columns: [...] });
+ *
+ * // Access primary key column
+ * const pkCol = model.primaryKey;
+ * ```
+ */
+export class Model implements TableType {
+  // ==========================================================================
+  // Basic Identification Properties
+  // ==========================================================================
+
+  /** Unique identifier */
+  id: string;
+
+  /** Display title */
+  title: string;
+
+  /** Database table name */
+  table_name?: string;
+
+  /** URL-friendly identifier */
+  slug?: string;
+
+  /** Universal unique identifier */
+  uuid?: string;
+
+  /** Model type (table or view) */
+  type?: ModelTypes;
+
+  // ==========================================================================
+  // Hierarchy Properties
+  // ==========================================================================
+
+  /** Project ID (direct reference) */
+  project_id?: string;
+
+  /** Database/Base ID (direct reference) */
+  base_id?: string;
+
+  /** Group ID */
+  group_id?: string;
+
+  /** Parent model ID */
+  parent_id?: string;
+
+  /** Foreign key to project */
+  fk_project_id?: string;
+
+  /** Foreign key to database/base */
+  fk_base_id?: string;
+
+  // ==========================================================================
+  // Schema Properties
+  // ==========================================================================
+
+  /** Development schema ID */
+  fk_schema_id?: string;
+
+  /** Published schema ID */
+  fk_public_schema_id?: string;
+
+  /** Cached schema object */
+  private _schema?: SchemaData;
+
+  /** Cached published schema */
+  private _publicSchema?: SchemaData;
+
+  /** Cached columns */
+  private _columns?: ColumnType[];
+
+  /** Cached views */
+  private _views?: ViewType[];
+
+  // ==========================================================================
+  // Configuration Properties
+  // ==========================================================================
+
+  /** Is model enabled */
+  enabled?: boolean;
+
+  /** Is model deleted (soft delete) */
+  deleted?: boolean;
+
+  /** Allow data copy */
+  copy_enabled?: boolean;
+
+  /** Allow data export */
+  export_enabled?: boolean;
+
+  /** Is pinned */
+  pin?: boolean;
+  pinned?: boolean;
+
+  /** Show all fields by default */
+  show_all_fields?: boolean;
+
+  /** Access password */
+  password?: string;
+
+  // ==========================================================================
+  // Publish State Properties
+  // ==========================================================================
+
+  /** Is published */
+  is_publish?: boolean;
+
+  /** Needs publishing (schema changed) */
+  need_publish?: boolean;
+
+  /** Last publish timestamp */
+  publish_at?: Date;
+
+  // ==========================================================================
+  // BigTable Storage Properties
+  // ==========================================================================
+
+  /** Underlying storage table name */
+  bigtable_table_name?: MetaTable;
+
+  /** Is many-to-many junction table */
+  mm?: boolean;
+
+  // ==========================================================================
+  // Metadata Properties
+  // ==========================================================================
+
+  /** Display order */
+  order?: number;
+
+  /** Additional metadata */
+  meta?: Record<string, unknown>;
+
+  /** Description for AI/docs */
+  description?: string;
+
+  /** Hints for AI operations */
+  hints?: string[];
+
+  /** Created timestamp */
+  created_at?: Date;
+
+  /** Updated timestamp */
+  updated_at?: Date;
+
+  // ==========================================================================
+  // Constructor
+  // ==========================================================================
+
+  constructor(data: Partial<TableType>) {
+    this.id = data.id || '';
+    this.title = data.title || '';
+    this.table_name = data.table_name;
+    this.slug = data.slug;
+    this.uuid = data.uuid;
+    this.type = data.type;
+
+    this.project_id = data.project_id;
+    this.base_id = data.base_id;
+    this.group_id = data.group_id;
+    this.parent_id = data.parent_id;
+    this.fk_project_id = data.fk_project_id;
+    this.fk_base_id = data.fk_base_id;
+
+    this.fk_schema_id = data.fk_schema_id;
+    this.fk_public_schema_id = data.fk_public_schema_id;
+    this._columns = data.columns;
+    this._views = data.views;
+
+    this.enabled = data.enabled;
+    this.deleted = data.deleted;
+    this.copy_enabled = data.copy_enabled;
+    this.export_enabled = data.export_enabled;
+    this.pin = data.pin;
+    this.pinned = data.pinned;
+    this.show_all_fields = data.show_all_fields;
+    this.password = data.password;
+
+    this.is_publish = data.is_publish;
+    this.need_publish = data.need_publish;
+    this.publish_at = data.publish_at;
+
+    this.bigtable_table_name = data.bigtable_table_name;
+    this.mm = data.mm;
+
+    this.order = data.order;
+    this.meta = data.meta;
+    this.description = data.description;
+    this.hints = data.hints;
+    this.created_at = data.created_at;
+    this.updated_at = data.updated_at;
+  }
+
+  // ==========================================================================
+  // Schema Methods
+  // ==========================================================================
+
+  /**
+   * Get schema data with caching
+   */
+  async getSchema(ncMeta: NcMeta = getDefaultNcMeta()): Promise<SchemaData | null> {
+    if (this._schema) {
+      return this._schema;
+    }
+
+    if (!this.fk_schema_id) {
+      return null;
+    }
+
+    const schema = await ncMeta.metaGet<SchemaData>(MetaTable.SCHEMAS, this.fk_schema_id);
+    if (schema) {
+      this._schema = schema;
+    }
+
+    return schema;
+  }
+
+  /**
+   * Update schema and trigger publish state change
+   */
+  async updateSchema(
+    data: Partial<SchemaData>,
+    ncMeta: NcMeta = getDefaultNcMeta()
+  ): Promise<SchemaData | null> {
+    let schemaId = this.fk_schema_id;
+
+    if (schemaId) {
+      // Update existing schema
+      await ncMeta.metaUpdate<SchemaData>(MetaTable.SCHEMAS, schemaId, data);
+    } else {
+      // Create new schema
+      const schemaData: Partial<SchemaData> = {
+        ...data,
+        domain: 'model',
+        fk_domain_id: this.id,
+        fk_project_id: this.project_id || this.fk_project_id,
+        env: 'DEV',
+      };
+      schemaId = await ncMeta.metaInsert<SchemaData>(MetaTable.SCHEMAS, schemaData);
+
+      // Update model with schema reference
+      await ncMeta.metaUpdate<TableType>(MetaTable.MODELS, this.id, {
+        fk_schema_id: schemaId,
+      });
+      this.fk_schema_id = schemaId;
+    }
+
+    // Clear cached schema
+    this._schema = undefined;
+    this._columns = undefined;
+    this._views = undefined;
+
+    // Update publish state to need_publish
+    await this.updatePublishState(ncMeta);
+
+    return this.getSchema(ncMeta);
+  }
+
+  /**
+   * Get column definitions from schema
+   */
+  async getColumns(ncMeta: NcMeta = getDefaultNcMeta()): Promise<ColumnType[]> {
+    if (this._columns) {
+      return this._columns;
+    }
+
+    const schema = await this.getSchema(ncMeta);
+    if (!schema?.data?.columns) {
+      return [];
+    }
+
+    this._columns = schema.data.columns as ColumnType[];
+    return this._columns;
+  }
+
+  // ==========================================================================
+  // View Methods
+  // ==========================================================================
+
+  /**
+   * Get all views for this model
+   */
+  async getViews(ncMeta: NcMeta = getDefaultNcMeta()): Promise<ViewType[]> {
+    if (this._views) {
+      return this._views;
+    }
+
+    const schema = await this.getSchema(ncMeta);
+    if (!schema?.data?.views) {
+      return [];
+    }
+
+    this._views = schema.data.views as ViewType[];
+    return this._views;
+  }
+
+  /**
+   * Get columns for a specific view
+   */
+  async getViewColumns(
+    viewId: string,
+    ncMeta: NcMeta = getDefaultNcMeta()
+  ): Promise<ColumnType[]> {
+    const views = await this.getViews(ncMeta);
+    const view = views.find((v) => v.id === viewId);
+    if (!view?.meta?.columns) {
+      return this.getColumns(ncMeta);
+    }
+
+    const allColumns = await this.getColumns(ncMeta);
+    const viewColumnIds = view.meta.columns as string[];
+
+    return allColumns.filter((col) => viewColumnIds.includes(col.id));
+  }
+
+  /**
+   * Get filters for a specific view
+   */
+  async getViewFilters(
+    viewId: string,
+    ncMeta: NcMeta = getDefaultNcMeta()
+  ): Promise<FilterType[]> {
+    const views = await this.getViews(ncMeta);
+    const view = views.find((v) => v.id === viewId);
+    return (view?.meta?.filters as FilterType[]) || [];
+  }
+
+  /**
+   * Get sorts for a specific view
+   */
+  async getViewSorts(
+    viewId: string,
+    ncMeta: NcMeta = getDefaultNcMeta()
+  ): Promise<SortType[]> {
+    const views = await this.getViews(ncMeta);
+    const view = views.find((v) => v.id === viewId);
+    return (view?.meta?.sorts as SortType[]) || [];
+  }
+
+  // ==========================================================================
+  // Primary Key / Primary Value Getters
+  // ==========================================================================
+
+  /**
+   * Get the primary key column
+   */
+  get primaryKey(): ColumnType | undefined {
+    const columns = this._columns || [];
+
+    // First, try to find a column with pk: true
+    const pkColumn = columns.find((col) => col.pk === true);
+    if (pkColumn) {
+      return pkColumn;
+    }
+
+    // Fallback: find column named 'id'
+    return columns.find(
+      (col) => col.column_name === 'id' || col.id === 'id' || col.title?.toLowerCase() === 'id'
+    );
+  }
+
+  /**
+   * Get all primary key columns (for composite keys)
+   */
+  get primaryKeys(): ColumnType[] {
+    const columns = this._columns || [];
+    return columns.filter((col) => col.pk === true);
+  }
+
+  /**
+   * Get the primary value column (display column)
+   */
+  get primaryValue(): ColumnType | undefined {
+    const columns = this._columns || [];
+
+    // First, try to find a column with pv: true
+    const pvColumn = columns.find((col) => col.pv === true);
+    if (pvColumn) {
+      return pvColumn;
+    }
+
+    // Fallback: find first text column that's not the primary key
+    return columns.find((col) => !col.pk && isTextCol(col));
+  }
+
+  // Expose columns for external access
+  get columns(): ColumnType[] | undefined {
+    return this._columns;
+  }
+
+  set columns(cols: ColumnType[] | undefined) {
+    this._columns = cols;
+  }
+
+  get views(): ViewType[] | undefined {
+    return this._views;
+  }
+
+  set views(views: ViewType[] | undefined) {
+    this._views = views;
+  }
+
+  // ==========================================================================
+  // Utility Methods
+  // ==========================================================================
+
+  /**
+   * Get the underlying BigTable storage table name
+   */
+  getBigtableName(): MetaTable {
+    if (this.bigtable_table_name) {
+      return this.bigtable_table_name;
+    }
+    return this.mm ? MetaTable.BIGTABLE_RELATIONS : MetaTable.BIGTABLE;
+  }
+
+  /**
+   * Check if model has any text columns
+   */
+  hasTextColumn(): boolean {
+    const columns = this._columns || [];
+    return columns.some((col) => isTextCol(col));
+  }
+
+  /**
+   * Convert to plain object
+   */
+  toJSON(): TableType {
+    return {
+      id: this.id,
+      title: this.title,
+      table_name: this.table_name,
+      slug: this.slug,
+      uuid: this.uuid,
+      type: this.type,
+      project_id: this.project_id,
+      base_id: this.base_id,
+      group_id: this.group_id,
+      parent_id: this.parent_id,
+      fk_project_id: this.fk_project_id,
+      fk_base_id: this.fk_base_id,
+      fk_schema_id: this.fk_schema_id,
+      fk_public_schema_id: this.fk_public_schema_id,
+      columns: this._columns,
+      views: this._views,
+      enabled: this.enabled,
+      deleted: this.deleted,
+      copy_enabled: this.copy_enabled,
+      export_enabled: this.export_enabled,
+      pin: this.pin,
+      pinned: this.pinned,
+      show_all_fields: this.show_all_fields,
+      password: this.password,
+      is_publish: this.is_publish,
+      need_publish: this.need_publish,
+      publish_at: this.publish_at,
+      bigtable_table_name: this.bigtable_table_name,
+      mm: this.mm,
+      order: this.order,
+      meta: this.meta,
+      description: this.description,
+      hints: this.hints,
+      created_at: this.created_at,
+      updated_at: this.updated_at,
+    };
+  }
+
+  /**
+   * Get raw data
+   */
+  getData(): TableType {
+    return this.toJSON();
+  }
+
+  // ==========================================================================
+  // Protected Methods
+  // ==========================================================================
+
+  /**
+   * Update publish state to indicate changes need publishing
+   */
+  protected async updatePublishState(ncMeta: NcMeta = getDefaultNcMeta()): Promise<void> {
+    const projectId = this.project_id || this.fk_project_id;
+    if (!projectId) return;
+
+    // Check if publish state exists
+    const publishState = await ncMeta.knex(MetaTable.PUBLISH_STATES)
+      .where('project_id', projectId)
+      .first();
+
+    if (publishState) {
+      await ncMeta.knex(MetaTable.PUBLISH_STATES)
+        .where('project_id', projectId)
+        .update({
+          status: 'draft',
+          updated_at: new Date(),
+        });
+    } else {
+      await ncMeta.knex(MetaTable.PUBLISH_STATES).insert({
+        id: generateId(),
+        project_id: projectId,
+        status: 'draft',
+        created_at: new Date(),
+        updated_at: new Date(),
+      });
+    }
+  }
+
+  // ==========================================================================
+  // Static Methods
+  // ==========================================================================
+
+  /**
+   * Get a model by ID
+   */
+  static async get(id: string, options?: TableOptions): Promise<Model | null> {
+    const data = await getById<TableType>(CacheScope.MODEL, MetaTable.MODELS, id, options);
+    return data ? new Model(data) : null;
+  }
+
+  /**
+   * Get a model by title within a project
+   */
+  static async getByTitle(
+    projectId: string,
+    title: string,
+    options?: TableOptions
+  ): Promise<Model | null> {
+    const data = await getByCondition<TableType>(
+      MetaTable.MODELS,
+      { project_id: projectId, title, deleted: false },
+      options
+    );
+    return data ? new Model(data) : null;
+  }
+
+  /**
+   * Check if a title is available within a project
+   */
+  static async checkTitleAvailable(
+    projectId: string,
+    title: string,
+    excludeId?: string,
+    options?: TableOptions
+  ): Promise<boolean> {
+    const existing = await this.getByTitle(projectId, title, options);
+    if (!existing) return true;
+    if (excludeId && existing.id === excludeId) return true;
+    return false;
+  }
+
+  /**
+   * Create a new model
+   */
+  static async insert(
+    data: Partial<TableType> & { project_id: string; title: string },
+    options?: TableOptions
+  ): Promise<Model> {
+    const db = options?.knex || getDb();
+    const cache = NocoCache.getInstance();
+    const now = new Date();
+    const id = generateId();
+
+    // Generate table_name from title if not provided
+    const table_name =
+      data.table_name ||
+      data.title
+        .toLowerCase()
+        .replace(/[^a-z0-9]+/g, '_')
+        .replace(/^_|_$/g, '');
+
+    const modelData: Partial<TableType> = {
+      ...data,
+      id,
+      table_name,
+      enabled: data.enabled ?? true,
+      deleted: false,
+      type: data.type || ModelTypes.TABLE,
+      created_at: now,
+      updated_at: now,
+    };
+
+    await db(MetaTable.MODELS).insert(modelData);
+
+    const model = await this.get(id, { ...options, skipCache: true });
+    if (!model) throw new Error('Failed to create model');
+
+    if (!options?.skipCache) {
+      await cache.set(`${CacheScope.MODEL}:${id}`, model.getData());
+      await cache.invalidateList(CacheScope.MODEL, data.project_id);
+    }
+
+    return model;
+  }
+
+  /**
+   * Update a model
+   */
+  static async update(
+    id: string,
+    data: Partial<TableType>,
+    options?: TableOptions
+  ): Promise<void> {
+    const model = await this.get(id, options);
+    await updateRecord<TableType>(CacheScope.MODEL, MetaTable.MODELS, id, data, options);
+    if (model && !options?.skipCache) {
+      await invalidateListCache(CacheScope.MODEL, model.project_id || '');
+    }
+  }
+
+  /**
+   * Soft delete a model
+   */
+  static async softDelete(id: string, options?: TableOptions): Promise<void> {
+    const model = await this.get(id, options);
+    await updateRecord<TableType>(
+      CacheScope.MODEL,
+      MetaTable.MODELS,
+      id,
+      { deleted: true },
+      options
+    );
+    if (model && !options?.skipCache) {
+      const cache = NocoCache.getInstance();
+      await cache.del(`${CacheScope.MODEL}:${id}`);
+      await cache.invalidateList(CacheScope.MODEL, model.project_id || '');
+    }
+  }
+
+  /**
+   * Hard delete a model
+   */
+  static async delete(id: string, options?: TableOptions): Promise<number> {
+    const model = await this.get(id, options);
+    const result = await deleteRecord(CacheScope.MODEL, MetaTable.MODELS, id, options);
+    if (model && !options?.skipCache) {
+      await invalidateListCache(CacheScope.MODEL, model.project_id || '');
+    }
+    return result;
+  }
+
+  /**
+   * List models for a project
+   */
+  static async listForProject(
+    projectId: string,
+    groupId?: string,
+    options?: TableOptions
+  ): Promise<Model[]> {
+    const condition: Record<string, unknown> = { project_id: projectId, deleted: false };
+    if (groupId !== undefined) {
+      condition.group_id = groupId;
+    }
+
+    const data = await listRecords<TableType>(
+      CacheScope.MODEL,
+      MetaTable.MODELS,
+      groupId ? `${projectId}:${groupId}` : projectId,
+      { condition, orderBy: { order: 'asc', created_at: 'asc' } },
+      options
+    );
+
+    return data.map((d) => new Model(d));
+  }
+
+  /**
+   * Reorder models within a project
+   */
+  static async reorder(
+    projectId: string,
+    modelOrders: Array<{ id: string; order: number }>,
+    options?: TableOptions
+  ): Promise<void> {
+    const db = options?.knex || getDb();
+
+    await db.transaction(async (trx) => {
+      for (const { id, order } of modelOrders) {
+        await trx(MetaTable.MODELS).where('id', id).update({ order, updated_at: new Date() });
+      }
+    });
+
+    if (!options?.skipCache) {
+      await invalidateListCache(CacheScope.MODEL, projectId);
+      const cache = NocoCache.getInstance();
+      for (const { id } of modelOrders) {
+        await cache.del(`${CacheScope.MODEL}:${id}`);
+      }
+    }
+  }
+}
+
+// ============================================================================
+// Helper Functions (kept for backward compatibility)
 // ============================================================================
 
 function getCache(): NocoCache {
@@ -48,7 +807,7 @@ export function genId(): string {
 }
 
 // ============================================================================
-// CRUD Operations
+// CRUD Operations (Generic helpers for other models)
 // ============================================================================
 
 /**
@@ -322,3 +1081,6 @@ function applyXcCondition(
 
   return query;
 }
+
+// Export Model as default
+export default Model;

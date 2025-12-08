@@ -7,6 +7,206 @@ import type { Request } from 'express';
 import type { Knex } from 'knex';
 
 // ============================================================================
+// Model Types (SDK-compatible)
+// ============================================================================
+
+/**
+ * Model/Table types enum
+ */
+export enum ModelTypes {
+  TABLE = 'table',
+  VIEW = 'view',
+}
+
+/**
+ * UI Types for columns
+ */
+export enum UITypes {
+  ID = 'ID',
+  SingleLineText = 'SingleLineText',
+  LongText = 'LongText',
+  Number = 'Number',
+  Decimal = 'Decimal',
+  Currency = 'Currency',
+  Percent = 'Percent',
+  Rating = 'Rating',
+  Checkbox = 'Checkbox',
+  Date = 'Date',
+  DateTime = 'DateTime',
+  Time = 'Time',
+  Duration = 'Duration',
+  Email = 'Email',
+  PhoneNumber = 'PhoneNumber',
+  URL = 'URL',
+  SingleSelect = 'SingleSelect',
+  MultiSelect = 'MultiSelect',
+  Attachment = 'Attachment',
+  JSON = 'JSON',
+  Formula = 'Formula',
+  Rollup = 'Rollup',
+  Lookup = 'Lookup',
+  LinkToAnotherRecord = 'LinkToAnotherRecord',
+  Links = 'Links',
+  User = 'User',
+  CreatedBy = 'CreatedBy',
+  LastModifiedBy = 'LastModifiedBy',
+  CreatedTime = 'CreatedTime',
+  LastModifiedTime = 'LastModifiedTime',
+  AutoNumber = 'AutoNumber',
+  Barcode = 'Barcode',
+  QrCode = 'QrCode',
+  GeoData = 'GeoData',
+  Geometry = 'Geometry',
+}
+
+/**
+ * View types enum
+ */
+export enum ViewTypes {
+  GRID = 'grid',
+  FORM = 'form',
+  GALLERY = 'gallery',
+  KANBAN = 'kanban',
+  CALENDAR = 'calendar',
+}
+
+/**
+ * Column type definition (SDK-compatible)
+ */
+export interface ColumnType {
+  id: string;
+  title: string;
+  column_name?: string;
+  uidt: UITypes | string;
+  dt?: string;
+  pk?: boolean;
+  pv?: boolean;
+  required?: boolean;
+  system?: boolean;
+  order?: number;
+  default_value?: unknown;
+  meta?: Record<string, unknown>;
+  colOptions?: Record<string, unknown>;
+  constraints?: {
+    required?: boolean;
+    unique?: boolean;
+    min?: number;
+    max?: number;
+    minLength?: number;
+    maxLength?: number;
+    pattern?: string;
+    enumValues?: string[];
+  };
+  description?: string;
+  examples?: unknown[];
+}
+
+/**
+ * View type definition
+ */
+export interface ViewType {
+  id: string;
+  title: string;
+  type: ViewTypes;
+  fk_model_id: string;
+  order?: number;
+  show_system_fields?: boolean;
+  lock_type?: 'collaborative' | 'locked' | 'personal';
+  meta?: Record<string, unknown>;
+}
+
+/**
+ * Filter type definition
+ */
+export interface FilterType {
+  id?: string;
+  fk_column_id?: string;
+  logical_op?: 'and' | 'or';
+  comparison_op?: string;
+  value?: unknown;
+  is_group?: boolean;
+  children?: FilterType[];
+}
+
+/**
+ * Sort type definition
+ */
+export interface SortType {
+  id?: string;
+  fk_column_id?: string;
+  direction?: 'asc' | 'desc';
+  order?: number;
+}
+
+/**
+ * Table/Model type definition (SDK-compatible)
+ */
+export interface TableType {
+  // Basic identification
+  id: string;
+  title: string;
+  table_name?: string;
+  slug?: string;
+  uuid?: string;
+  type?: ModelTypes;
+
+  // Hierarchy
+  project_id?: string;
+  base_id?: string;
+  group_id?: string;
+  parent_id?: string;
+  fk_project_id?: string;
+  fk_base_id?: string;
+
+  // Schema association
+  fk_schema_id?: string;
+  fk_public_schema_id?: string;
+  columns?: ColumnType[];
+  views?: ViewType[];
+
+  // Configuration
+  enabled?: boolean;
+  deleted?: boolean;
+  copy_enabled?: boolean;
+  export_enabled?: boolean;
+  pin?: boolean;
+  pinned?: boolean;
+  show_all_fields?: boolean;
+  password?: string;
+
+  // Publish state
+  is_publish?: boolean;
+  need_publish?: boolean;
+  publish_at?: Date;
+
+  // BigTable storage
+  bigtable_table_name?: MetaTable;
+  mm?: boolean;
+
+  // Metadata
+  order?: number;
+  meta?: Record<string, unknown>;
+  description?: string;
+  hints?: string[];
+  created_at?: Date;
+  updated_at?: Date;
+}
+
+/**
+ * Check if a column is a text column
+ */
+export function isTextCol(col: ColumnType): boolean {
+  const textTypes = [
+    UITypes.SingleLineText,
+    UITypes.LongText,
+    UITypes.Email,
+    UITypes.PhoneNumber,
+    UITypes.URL,
+  ];
+  return textTypes.includes(col.uidt as UITypes);
+}
+
+// ============================================================================
 // User & Auth Types
 // ============================================================================
 
@@ -233,12 +433,16 @@ export enum MetaTable {
   PROJECTS = 'nc_projects',
   PROJECT_USERS = 'nc_project_users',
   BASES = 'nc_bases',
+  MODELS = 'nc_models',
   PAGES = 'nc_pages',
   FLOWS = 'nc_flows',
   SCHEMAS = 'nc_schemas',
   ORGS = 'nc_orgs',
   ORG_USERS = 'nc_org_users',
   PUBLISH_STATES = 'nc_publish_states',
+  BIGTABLE = 'nc_bigtable',
+  BIGTABLE_RELATIONS = 'nc_bigtable_relations',
+  AUDIT = 'nc_audit',
 }
 
 // ============================================================================
