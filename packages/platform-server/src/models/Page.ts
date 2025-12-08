@@ -16,6 +16,7 @@ import {
   invalidateListCache,
   type TableOptions,
 } from './Table.js';
+import { Schema, type JsonPatchOperation, type SchemaPatchResult } from './Schema.js';
 
 const CACHE_SCOPE = CacheScope.PAGE;
 const META_TABLE = MetaTable.PAGES;
@@ -45,6 +46,104 @@ export class Page {
     await Page.update(this.id, data);
     const updated = await Page.get(this.id, { skipCache: true });
     if (updated) this.data = updated.getData();
+  }
+
+  // ==========================================================================
+  // Schema Methods
+  // ==========================================================================
+
+  /**
+   * Get Schema model instance (DEV environment)
+   */
+  async getSchemaModel(options?: TableOptions): Promise<Schema | null> {
+    return Schema.getOrCreate({
+      domain: 'page',
+      fk_domain_id: this.id,
+      fk_project_id: this.projectId,
+      env: 'DEV',
+    }, options);
+  }
+
+  /**
+   * Get published Schema model instance (PRO environment)
+   */
+  async getPublicSchemaModel(options?: TableOptions): Promise<Schema | null> {
+    return Schema.getByDomainAndEnv('page', this.id, 'PRO', options);
+  }
+
+  /**
+   * Get schema data
+   */
+  async getSchemaData(options?: TableOptions): Promise<Record<string, unknown> | null> {
+    const schemaModel = await this.getSchemaModel(options);
+    if (!schemaModel) return null;
+    
+    // Update local reference
+    if (this.data.fk_schema_id !== schemaModel.id) {
+      this.data.fk_schema_id = schemaModel.id;
+    }
+    
+    return schemaModel.data;
+  }
+
+  /**
+   * Update schema using JSON Patch operations
+   */
+  async patchSchema(
+    patches: JsonPatchOperation[],
+    options?: TableOptions
+  ): Promise<SchemaPatchResult> {
+    const schemaModel = await this.getSchemaModel(options);
+    if (!schemaModel) {
+      throw new Error('Schema not found for page');
+    }
+    return schemaModel.applyPatch(patches, options);
+  }
+
+  /**
+   * Update schema data (full replace)
+   */
+  async updateSchemaData(
+    data: Record<string, unknown>,
+    options?: TableOptions
+  ): Promise<Schema> {
+    const schemaModel = await this.getSchemaModel(options);
+    if (!schemaModel) {
+      // Create new schema
+      const newSchema = await Schema.create({
+        domain: 'page',
+        fk_domain_id: this.id,
+        fk_project_id: this.projectId,
+        data,
+        env: 'DEV',
+      }, options);
+
+      // Update page with schema reference
+      await Page.update(this.id, { fk_schema_id: newSchema.id }, options);
+      this.data.fk_schema_id = newSchema.id;
+      return newSchema;
+    }
+
+    await schemaModel.updateData(data, options);
+    return schemaModel;
+  }
+
+  /**
+   * Publish schema (copy DEV to PRO)
+   */
+  async publishSchema(options?: TableOptions): Promise<Schema> {
+    const schemaModel = await this.getSchemaModel(options);
+    if (!schemaModel) {
+      throw new Error('No schema to publish');
+    }
+
+    const publishedSchema = await schemaModel.publish(options);
+
+    // Update page with published schema reference
+    await Page.update(this.id, { fk_publish_schema_id: publishedSchema.id }, options);
+    this.data.fk_publish_schema_id = publishedSchema.id;
+
+    return publishedSchema;
   }
 
   // Static methods
