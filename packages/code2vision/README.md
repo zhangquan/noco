@@ -28,6 +28,7 @@
 ## 📖 文档
 
 - [可行性研究报告](./FEASIBILITY_STUDY.md) - 完整的技术方案和规划
+- [TSX 转换技术分析](./TSX_TO_SCHEMA_ANALYSIS.md) - TSX → Schema 转换的深度技术分析
 
 ## License
 

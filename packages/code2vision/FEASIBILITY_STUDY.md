@@ -698,9 +698,24 @@ class CodeGenerator {
 
 ---
 
-## 附录
+## 附录 A: TSX 转换技术深度分析
 
-### A. 参考项目
+详细的 TSX 到 Schema 转换技术分析，请参阅：
+
+📄 **[TSX_TO_SCHEMA_ANALYSIS.md](./TSX_TO_SCHEMA_ANALYSIS.md)**
+
+该文档包含：
+- React 组件结构完整解析
+- JSX 各种语法的转换策略
+- 条件渲染、循环渲染的处理方案
+- 表达式处理与预览值推断
+- 组件注册表设计
+- 完整转换流程与代码示例
+- 实际组件转换示例
+
+---
+
+## 附录 B: 参考项目
 
 | 项目 | 相关度 | 参考点 |
 |------|--------|--------|
@@ -710,7 +725,7 @@ class CodeGenerator {
 | [Builder.io](https://www.builder.io/) | 高 | 可视化编辑器 |
 | [Framer](https://www.framer.com/) | 高 | 代码组件 + 可视化 |
 
-### B. 技术规范参考
+## 附录 C: 技术规范参考
 
 - [TypeScript Compiler API](https://github.com/microsoft/TypeScript/wiki/Using-the-Compiler-API)
 - [JSX Specification](https://facebook.github.io/jsx/)
