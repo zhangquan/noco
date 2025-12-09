@@ -4,18 +4,13 @@
  * 
  * Key principles:
  * - Elements are sorted by their edge coordinates (bottom for rows, right for columns)
- * - Uses "greedy accumulation" strategy with look-ahead
+ * - Uses "greedy accumulation" strategy with look-ahead to remaining elements
  * - Dynamic tolerance based on element size (allows slight overlap)
  * - Provides alignment scoring for quality assessment
  */
 
 import type { NodeSchema, Frame } from '../types.js';
-import {
-  normalizeFrame,
-  getNodeFrame,
-  getBoundingFrame,
-} from '../utils/frameUtil.js';
-import { sortBy } from '../utils/utils.js';
+import { normalizeFrame, getNodeFrame } from '../utils/frameUtil.js';
 
 /**
  * Constants for base tolerance values
@@ -79,39 +74,80 @@ export interface SimpleSplitResult {
 }
 
 /**
- * Calculate bounding frame for a set of nodes
+ * Internal structure for node with pre-computed frame
  */
-function getNodesBoundingFrame(nodes: NodeSchema[]): Frame | undefined {
-  const frames = nodes
-    .map(n => getNodeFrame(n))
-    .filter((f): f is Frame => f !== undefined);
-  return getBoundingFrame(frames);
+interface NodeWithFrame {
+  node: NodeSchema;
+  frame: Frame;
 }
 
 /**
- * Calculate dynamic tolerance for row splitting
- * Formula: -min(elementHeight, remainingBBoxHeight) / 5
- * Then take the smaller (more negative) of this and ROW_MARGIN_DIS
+ * Pre-compute frames for all nodes, filtering out nodes without valid frames
  */
-function calculateRowTolerance(
-  currentHeight: number,
-  remainingBBoxHeight: number
-): number {
-  const baseTolerance = -Math.min(currentHeight, remainingBBoxHeight) / 5;
-  return Math.min(baseTolerance, ROW_MARGIN_DIS);
+function prepareNodes(nodes: NodeSchema[]): NodeWithFrame[] {
+  const result: NodeWithFrame[] = [];
+  for (const node of nodes) {
+    const frame = getNodeFrame(node);
+    if (frame) {
+      result.push({ node, frame: normalizeFrame(frame) });
+    } else {
+      // Nodes without frames get a zero frame
+      result.push({ 
+        node, 
+        frame: { left: 0, top: 0, width: 0, height: 0, right: 0, bottom: 0 } 
+      });
+    }
+  }
+  return result;
 }
 
 /**
- * Calculate dynamic tolerance for column splitting
- * Formula: -min(elementWidth, remainingBBoxWidth) / 4
- * Then take the smaller (more negative) of this and COLUMN_MARGIN_DIS
+ * Calculate bounding box for a range of prepared nodes
+ * Optimized: calculates from pre-computed frames
  */
-function calculateColumnTolerance(
-  currentWidth: number,
-  remainingBBoxWidth: number
-): number {
-  const baseTolerance = -Math.min(currentWidth, remainingBBoxWidth) / 4;
-  return Math.min(baseTolerance, COLUMN_MARGIN_DIS);
+function getBoundingBox(nodes: NodeWithFrame[], start: number, end: number): Frame {
+  if (start >= end) {
+    return { left: 0, top: 0, width: 0, height: 0, right: 0, bottom: 0 };
+  }
+
+  let minLeft = Infinity;
+  let minTop = Infinity;
+  let maxRight = -Infinity;
+  let maxBottom = -Infinity;
+
+  for (let i = start; i < end; i++) {
+    const f = nodes[i].frame;
+    if (f.left < minLeft) minLeft = f.left;
+    if (f.top < minTop) minTop = f.top;
+    if (f.right! > maxRight) maxRight = f.right!;
+    if (f.bottom! > maxBottom) maxBottom = f.bottom!;
+  }
+
+  return {
+    left: minLeft,
+    top: minTop,
+    width: maxRight - minLeft,
+    height: maxBottom - minTop,
+    right: maxRight,
+    bottom: maxBottom,
+  };
+}
+
+/**
+ * Create empty split result
+ */
+function createEmptyResult(nodes: NodeSchema[], type: 'rows' | 'column'): SplitResult {
+  return {
+    success: false,
+    groups: [nodes],
+    gaps: [],
+    type,
+    els: [nodes],
+    margins: [],
+    minMarginDis: null,
+    minAlignDis: Infinity,
+    splitGroups: [{ els: nodes }],
+  };
 }
 
 /**
@@ -119,114 +155,97 @@ function calculateColumnTolerance(
  * 
  * Algorithm:
  * 1. Sort elements by bottom coordinate (ascending)
- * 2. Use greedy accumulation: add elements to current row
- * 3. Check if gap to ALL remaining elements is sufficient to split
- * 4. If yes, finalize current row and start new one
+ * 2. Greedy accumulation: keep adding elements to current row
+ * 3. At each step, check gap between current row's bottom and remaining elements' top
+ * 4. If gap >= tolerance, finalize current row and start new one
  * 
- * @param nodes - Array of nodes to split
- * @returns Split result with rows and metadata
+ * Tolerance formula: -min(currentElementHeight, remainingBBoxHeight) / 5
+ * Then take the smaller (more negative) of this and ROW_MARGIN_DIS
  */
 export function splitToRow(nodes: NodeSchema[]): SplitResult {
-  const emptyResult: SplitResult = {
-    success: false,
-    groups: [nodes],
-    gaps: [],
-    type: 'rows',
-    els: [nodes],
-    margins: [],
-    minMarginDis: null,
-    minAlignDis: Infinity,
-    splitGroups: [{ els: nodes }],
-  };
-
-  if (nodes.length <= 1) {
-    return emptyResult;
+  if (!nodes || nodes.length <= 1) {
+    return createEmptyResult(nodes || [], 'rows');
   }
 
-  // Sort by bottom coordinate (ascending)
-  const sortedNodes = sortBy(nodes, (node) => {
-    const frame = getNodeFrame(node);
-    return frame ? frame.bottom! : 0;
-  });
+  // Pre-compute frames and sort by bottom
+  const prepared = prepareNodes(nodes);
+  prepared.sort((a, b) => a.frame.bottom! - b.frame.bottom!);
 
   const groups: NodeSchema[][] = [];
   const gaps: number[] = [];
   const margins: MarginInfo[] = [];
   const splitGroups: SplitGroup[] = [];
-  
-  let currentGroup: NodeSchema[] = [];
-  let currentGroupBottom = -Infinity;
 
-  for (let i = 0; i < sortedNodes.length; i++) {
-    const currentNode = sortedNodes[i];
-    const currentFrame = getNodeFrame(currentNode);
+  let groupStartIdx = 0;
+  let currentGroupBottom = prepared[0].frame.bottom!;
 
-    if (!currentFrame) {
-      currentGroup.push(currentNode);
-      continue;
+  for (let i = 0; i < prepared.length; i++) {
+    const current = prepared[i];
+    
+    // Update current group's bottom extent
+    if (current.frame.bottom! > currentGroupBottom) {
+      currentGroupBottom = current.frame.bottom!;
     }
 
-    // Add current element to the pending group
-    currentGroup.push(currentNode);
-    currentGroupBottom = Math.max(currentGroupBottom, currentFrame.bottom!);
-
     // Check if we can split after this element
-    // Look ahead to all remaining elements
-    if (i < sortedNodes.length - 1) {
-      const remainingNodes = sortedNodes.slice(i + 1);
-      const remainingBBox = getNodesBoundingFrame(remainingNodes);
+    const remainingStartIdx = i + 1;
+    if (remainingStartIdx < prepared.length) {
+      // Get bounding box of remaining elements
+      const remainingBBox = getBoundingBox(prepared, remainingStartIdx, prepared.length);
+      
+      // Calculate gap between current group and remaining elements
+      const gap = remainingBBox.top - currentGroupBottom;
 
-      if (remainingBBox) {
-        // Calculate gap between current group bottom and remaining elements' top
-        const gap = remainingBBox.top - currentGroupBottom;
+      // Calculate dynamic tolerance
+      // Use current element's height and remaining bbox height
+      const currentHeight = current.frame.height;
+      const remainingHeight = remainingBBox.height;
+      const dynamicTolerance = -Math.min(currentHeight, remainingHeight) / 5;
+      const tolerance = Math.min(dynamicTolerance, ROW_MARGIN_DIS);
 
-        // Calculate dynamic tolerance
-        const currentHeight = currentFrame.height;
-        const tolerance = calculateRowTolerance(currentHeight, remainingBBox.height);
+      // If gap is sufficient, split here
+      if (gap >= tolerance) {
+        // Extract current group
+        const groupNodes = prepared.slice(groupStartIdx, remainingStartIdx).map(p => p.node);
+        groups.push(groupNodes);
+        splitGroups.push({ els: groupNodes, minMargin: gap });
+        gaps.push(gap);
+        margins.push({
+          start: currentGroupBottom,
+          end: remainingBBox.top,
+          distance: gap,
+        });
 
-        // If gap is sufficient (gap >= tolerance, remembering tolerance is negative)
-        if (gap >= tolerance) {
-          // Finalize current group
-          groups.push([...currentGroup]);
-          splitGroups.push({ els: [...currentGroup], minMargin: gap });
-          gaps.push(gap);
-          margins.push({
-            start: currentGroupBottom,
-            end: remainingBBox.top,
-            distance: gap,
-          });
-
-          // Start new group
-          currentGroup = [];
-          currentGroupBottom = -Infinity;
-        }
+        // Start new group
+        groupStartIdx = remainingStartIdx;
+        currentGroupBottom = prepared[remainingStartIdx].frame.bottom!;
       }
     }
   }
 
   // Add the last group
-  if (currentGroup.length > 0) {
-    groups.push(currentGroup);
-    splitGroups.push({ els: currentGroup });
+  const lastGroupNodes = prepared.slice(groupStartIdx).map(p => p.node);
+  if (lastGroupNodes.length > 0) {
+    groups.push(lastGroupNodes);
+    splitGroups.push({ els: lastGroupNodes });
   }
 
   // Calculate minimum margin distance
   let minMarginDis: MarginInfo | null = null;
   if (margins.length > 0) {
-    minMarginDis = margins.reduce((min, m) => 
-      m.distance < min.distance ? m : min
-    , margins[0]);
+    minMarginDis = margins[0];
+    for (let i = 1; i < margins.length; i++) {
+      if (margins[i].distance < minMarginDis.distance) {
+        minMarginDis = margins[i];
+      }
+    }
   }
 
-  // Calculate alignment score
-  const minAlignDis = groups.length > 1 
-    ? getSplitRowAlignValue(groups) 
-    : Infinity;
-
-  const success = groups.length > 1;
+  // Calculate alignment score (deferred to avoid circular dependency)
+  const minAlignDis = groups.length > 1 ? calculateRowAlignScore(groups) : Infinity;
 
   return {
-    success,
+    success: groups.length > 1,
     groups,
     gaps,
     type: 'rows',
@@ -243,114 +262,97 @@ export function splitToRow(nodes: NodeSchema[]): SplitResult {
  * 
  * Algorithm:
  * 1. Sort elements by right coordinate (ascending)
- * 2. Use greedy accumulation: add elements to current column
- * 3. Check if gap to ALL remaining elements is sufficient to split
- * 4. If yes, finalize current column and start new one
+ * 2. Greedy accumulation: keep adding elements to current column
+ * 3. At each step, check gap between current column's right and remaining elements' left
+ * 4. If gap >= tolerance, finalize current column and start new one
  * 
- * @param nodes - Array of nodes to split
- * @returns Split result with columns and metadata
+ * Tolerance formula: -min(currentElementWidth, remainingBBoxWidth) / 4
+ * Then take the smaller (more negative) of this and COLUMN_MARGIN_DIS
  */
 export function splitToColumn(nodes: NodeSchema[]): SplitResult {
-  const emptyResult: SplitResult = {
-    success: false,
-    groups: [nodes],
-    gaps: [],
-    type: 'column',
-    els: [nodes],
-    margins: [],
-    minMarginDis: null,
-    minAlignDis: Infinity,
-    splitGroups: [{ els: nodes }],
-  };
-
-  if (nodes.length <= 1) {
-    return emptyResult;
+  if (!nodes || nodes.length <= 1) {
+    return createEmptyResult(nodes || [], 'column');
   }
 
-  // Sort by right coordinate (ascending)
-  const sortedNodes = sortBy(nodes, (node) => {
-    const frame = getNodeFrame(node);
-    return frame ? frame.right! : 0;
-  });
+  // Pre-compute frames and sort by right
+  const prepared = prepareNodes(nodes);
+  prepared.sort((a, b) => a.frame.right! - b.frame.right!);
 
   const groups: NodeSchema[][] = [];
   const gaps: number[] = [];
   const margins: MarginInfo[] = [];
   const splitGroups: SplitGroup[] = [];
-  
-  let currentGroup: NodeSchema[] = [];
-  let currentGroupRight = -Infinity;
 
-  for (let i = 0; i < sortedNodes.length; i++) {
-    const currentNode = sortedNodes[i];
-    const currentFrame = getNodeFrame(currentNode);
+  let groupStartIdx = 0;
+  let currentGroupRight = prepared[0].frame.right!;
 
-    if (!currentFrame) {
-      currentGroup.push(currentNode);
-      continue;
+  for (let i = 0; i < prepared.length; i++) {
+    const current = prepared[i];
+    
+    // Update current group's right extent
+    if (current.frame.right! > currentGroupRight) {
+      currentGroupRight = current.frame.right!;
     }
 
-    // Add current element to the pending group
-    currentGroup.push(currentNode);
-    currentGroupRight = Math.max(currentGroupRight, currentFrame.right!);
-
     // Check if we can split after this element
-    // Look ahead to all remaining elements
-    if (i < sortedNodes.length - 1) {
-      const remainingNodes = sortedNodes.slice(i + 1);
-      const remainingBBox = getNodesBoundingFrame(remainingNodes);
+    const remainingStartIdx = i + 1;
+    if (remainingStartIdx < prepared.length) {
+      // Get bounding box of remaining elements
+      const remainingBBox = getBoundingBox(prepared, remainingStartIdx, prepared.length);
+      
+      // Calculate gap between current group and remaining elements
+      const gap = remainingBBox.left - currentGroupRight;
 
-      if (remainingBBox) {
-        // Calculate gap between current group right and remaining elements' left
-        const gap = remainingBBox.left - currentGroupRight;
+      // Calculate dynamic tolerance
+      // Use current element's width and remaining bbox width
+      const currentWidth = current.frame.width;
+      const remainingWidth = remainingBBox.width;
+      const dynamicTolerance = -Math.min(currentWidth, remainingWidth) / 4;
+      const tolerance = Math.min(dynamicTolerance, COLUMN_MARGIN_DIS);
 
-        // Calculate dynamic tolerance
-        const currentWidth = currentFrame.width;
-        const tolerance = calculateColumnTolerance(currentWidth, remainingBBox.width);
+      // If gap is sufficient, split here
+      if (gap >= tolerance) {
+        // Extract current group
+        const groupNodes = prepared.slice(groupStartIdx, remainingStartIdx).map(p => p.node);
+        groups.push(groupNodes);
+        splitGroups.push({ els: groupNodes, minMargin: gap });
+        gaps.push(gap);
+        margins.push({
+          start: currentGroupRight,
+          end: remainingBBox.left,
+          distance: gap,
+        });
 
-        // If gap is sufficient (gap >= tolerance, remembering tolerance is negative)
-        if (gap >= tolerance) {
-          // Finalize current group
-          groups.push([...currentGroup]);
-          splitGroups.push({ els: [...currentGroup], minMargin: gap });
-          gaps.push(gap);
-          margins.push({
-            start: currentGroupRight,
-            end: remainingBBox.left,
-            distance: gap,
-          });
-
-          // Start new group
-          currentGroup = [];
-          currentGroupRight = -Infinity;
-        }
+        // Start new group
+        groupStartIdx = remainingStartIdx;
+        currentGroupRight = prepared[remainingStartIdx].frame.right!;
       }
     }
   }
 
   // Add the last group
-  if (currentGroup.length > 0) {
-    groups.push(currentGroup);
-    splitGroups.push({ els: currentGroup });
+  const lastGroupNodes = prepared.slice(groupStartIdx).map(p => p.node);
+  if (lastGroupNodes.length > 0) {
+    groups.push(lastGroupNodes);
+    splitGroups.push({ els: lastGroupNodes });
   }
 
   // Calculate minimum margin distance
   let minMarginDis: MarginInfo | null = null;
   if (margins.length > 0) {
-    minMarginDis = margins.reduce((min, m) => 
-      m.distance < min.distance ? m : min
-    , margins[0]);
+    minMarginDis = margins[0];
+    for (let i = 1; i < margins.length; i++) {
+      if (margins[i].distance < minMarginDis.distance) {
+        minMarginDis = margins[i];
+      }
+    }
   }
 
   // Calculate alignment score
-  const minAlignDis = groups.length > 1 
-    ? getSplitColumnAlignValue(groups) 
-    : Infinity;
-
-  const success = groups.length > 1;
+  const minAlignDis = groups.length > 1 ? calculateColumnAlignScore(groups) : Infinity;
 
   return {
-    success,
+    success: groups.length > 1,
     groups,
     gaps,
     type: 'column',
@@ -363,61 +365,88 @@ export function splitToColumn(nodes: NodeSchema[]): SplitResult {
 }
 
 /**
- * Calculate alignment score for row split
- * 
- * For each pair of adjacent rows:
- * 1. Split each row into columns
- * 2. Calculate distance from each column's bottom edge to the split line (for upper row)
- * 3. Calculate distance from each column's top edge to the split line (for lower row)
- * 4. Average these distances
- * 
- * Lower score = better alignment
+ * Get bounding frame for a group of nodes
  */
-export function getSplitRowAlignValue(rows: NodeSchema[][]): number {
+function getGroupBoundingFrame(nodes: NodeSchema[]): Frame | null {
+  if (nodes.length === 0) return null;
+  
+  let minLeft = Infinity;
+  let minTop = Infinity;
+  let maxRight = -Infinity;
+  let maxBottom = -Infinity;
+  let hasValidFrame = false;
+
+  for (const node of nodes) {
+    const frame = getNodeFrame(node);
+    if (frame) {
+      hasValidFrame = true;
+      if (frame.left < minLeft) minLeft = frame.left;
+      if (frame.top < minTop) minTop = frame.top;
+      if (frame.right! > maxRight) maxRight = frame.right!;
+      if (frame.bottom! > maxBottom) maxBottom = frame.bottom!;
+    }
+  }
+
+  if (!hasValidFrame) return null;
+
+  return {
+    left: minLeft,
+    top: minTop,
+    width: maxRight - minLeft,
+    height: maxBottom - minTop,
+    right: maxRight,
+    bottom: maxBottom,
+  };
+}
+
+/**
+ * Calculate alignment score for row split
+ * Measures how well elements align between adjacent rows
+ */
+function calculateRowAlignScore(rows: NodeSchema[][]): number {
   if (rows.length < 2) return Infinity;
 
   let minAlignDis = Infinity;
 
   for (let i = 0; i < rows.length - 1; i++) {
-    const upperRow = rows[i];
-    const lowerRow = rows[i + 1];
-
-    // Get split line position (between upper bottom and lower top)
-    const upperBBox = getNodesBoundingFrame(upperRow);
-    const lowerBBox = getNodesBoundingFrame(lowerRow);
-
+    const upperBBox = getGroupBoundingFrame(rows[i]);
+    const lowerBBox = getGroupBoundingFrame(rows[i + 1]);
     if (!upperBBox || !lowerBBox) continue;
 
+    // Split line is midpoint between rows
     const splitLine = (upperBBox.bottom! + lowerBBox.top) / 2;
 
-    // Split each row into columns
-    const upperColumns = splitToColumn(upperRow);
-    const lowerColumns = splitToColumn(lowerRow);
+    // Split each row into columns and measure alignment
+    const upperCols = splitToColumn(rows[i]);
+    const lowerCols = splitToColumn(rows[i + 1]);
 
-    // Calculate distances from column edges to split line
-    let totalDistance = 0;
+    let totalDist = 0;
     let count = 0;
 
-    // Upper row: distance from each column's bottom to split line
-    for (const col of upperColumns.groups) {
-      const colBBox = getNodesBoundingFrame(col);
+    // Upper row columns: distance from bottom to split line
+    for (const col of upperCols.groups) {
+      const colBBox = getGroupBoundingFrame(col);
       if (colBBox) {
-        totalDistance += Math.abs(colBBox.bottom! - splitLine);
+        totalDist += Math.abs(colBBox.bottom! - splitLine);
         count++;
       }
     }
 
-    // Lower row: distance from each column's top to split line
-    for (const col of lowerColumns.groups) {
-      const colBBox = getNodesBoundingFrame(col);
+    // Lower row columns: distance from top to split line
+    for (const col of lowerCols.groups) {
+      const colBBox = getGroupBoundingFrame(col);
       if (colBBox) {
-        totalDistance += Math.abs(colBBox.top - splitLine);
+        totalDist += Math.abs(colBBox.top - splitLine);
         count++;
       }
     }
 
-    const avgDistance = count > 0 ? totalDistance / count : Infinity;
-    minAlignDis = Math.min(minAlignDis, avgDistance);
+    if (count > 0) {
+      const avgDist = totalDist / count;
+      if (avgDist < minAlignDis) {
+        minAlignDis = avgDist;
+      }
+    }
   }
 
   return minAlignDis;
@@ -425,63 +454,66 @@ export function getSplitRowAlignValue(rows: NodeSchema[][]): number {
 
 /**
  * Calculate alignment score for column split
- * 
- * For each pair of adjacent columns:
- * 1. Split each column into rows
- * 2. Calculate distance from each row's right edge to the split line (for left column)
- * 3. Calculate distance from each row's left edge to the split line (for right column)
- * 4. Average these distances
- * 
- * Lower score = better alignment
+ * Measures how well elements align between adjacent columns
  */
-export function getSplitColumnAlignValue(columns: NodeSchema[][]): number {
+function calculateColumnAlignScore(columns: NodeSchema[][]): number {
   if (columns.length < 2) return Infinity;
 
   let minAlignDis = Infinity;
 
   for (let i = 0; i < columns.length - 1; i++) {
-    const leftCol = columns[i];
-    const rightCol = columns[i + 1];
-
-    // Get split line position (between left right and right left)
-    const leftBBox = getNodesBoundingFrame(leftCol);
-    const rightBBox = getNodesBoundingFrame(rightCol);
-
+    const leftBBox = getGroupBoundingFrame(columns[i]);
+    const rightBBox = getGroupBoundingFrame(columns[i + 1]);
     if (!leftBBox || !rightBBox) continue;
 
+    // Split line is midpoint between columns
     const splitLine = (leftBBox.right! + rightBBox.left) / 2;
 
-    // Split each column into rows
-    const leftRows = splitToRow(leftCol);
-    const rightRows = splitToRow(rightCol);
+    // Split each column into rows and measure alignment
+    const leftRows = splitToRow(columns[i]);
+    const rightRows = splitToRow(columns[i + 1]);
 
-    // Calculate distances from row edges to split line
-    let totalDistance = 0;
+    let totalDist = 0;
     let count = 0;
 
-    // Left column: distance from each row's right to split line
+    // Left column rows: distance from right to split line
     for (const row of leftRows.groups) {
-      const rowBBox = getNodesBoundingFrame(row);
+      const rowBBox = getGroupBoundingFrame(row);
       if (rowBBox) {
-        totalDistance += Math.abs(rowBBox.right! - splitLine);
+        totalDist += Math.abs(rowBBox.right! - splitLine);
         count++;
       }
     }
 
-    // Right column: distance from each row's left to split line
+    // Right column rows: distance from left to split line
     for (const row of rightRows.groups) {
-      const rowBBox = getNodesBoundingFrame(row);
+      const rowBBox = getGroupBoundingFrame(row);
       if (rowBBox) {
-        totalDistance += Math.abs(rowBBox.left - splitLine);
+        totalDist += Math.abs(rowBBox.left - splitLine);
         count++;
       }
     }
 
-    const avgDistance = count > 0 ? totalDistance / count : Infinity;
-    minAlignDis = Math.min(minAlignDis, avgDistance);
+    if (count > 0) {
+      const avgDist = totalDist / count;
+      if (avgDist < minAlignDis) {
+        minAlignDis = avgDist;
+      }
+    }
   }
 
   return minAlignDis;
+}
+
+/**
+ * Public alignment score functions
+ */
+export function getSplitRowAlignValue(rows: NodeSchema[][]): number {
+  return calculateRowAlignScore(rows);
+}
+
+export function getSplitColumnAlignValue(columns: NodeSchema[][]): number {
+  return calculateColumnAlignScore(columns);
 }
 
 /**
@@ -524,8 +556,8 @@ export function smartSplitToColumn(nodes: NodeSchema[]): SplitResult {
       splitGroups.push({ els: pendingMerge });
 
       // Calculate gap to next column
-      const currentBBox = getNodesBoundingFrame(pendingMerge);
-      const nextBBox = getNodesBoundingFrame(nextColumn);
+      const currentBBox = getGroupBoundingFrame(pendingMerge);
+      const nextBBox = getGroupBoundingFrame(nextColumn);
       if (currentBBox && nextBBox) {
         const gap = nextBBox.left - currentBBox.right!;
         gaps.push(gap);
@@ -551,14 +583,17 @@ export function smartSplitToColumn(nodes: NodeSchema[]): SplitResult {
   // Calculate minimum margin distance
   let minMarginDis: MarginInfo | null = null;
   if (margins.length > 0) {
-    minMarginDis = margins.reduce((min, m) => 
-      m.distance < min.distance ? m : min
-    , margins[0]);
+    minMarginDis = margins[0];
+    for (let i = 1; i < margins.length; i++) {
+      if (margins[i].distance < minMarginDis.distance) {
+        minMarginDis = margins[i];
+      }
+    }
   }
 
   // Calculate alignment score
   const minAlignDis = mergedGroups.length > 1 
-    ? getSplitColumnAlignValue(mergedGroups) 
+    ? calculateColumnAlignScore(mergedGroups) 
     : Infinity;
 
   return {
@@ -576,7 +611,7 @@ export function smartSplitToColumn(nodes: NodeSchema[]): SplitResult {
 
 /**
  * Analyze split results and determine the best split direction
- * Uses both margin distance and alignment score for decision
+ * Uses multiple factors: group count, alignment score, margin distance
  */
 export function analyzeSplit(
   rowSplit: SplitResult,
@@ -591,25 +626,32 @@ export function analyzeSplit(
   if (rowSuccess && columnSuccess) {
     // Both work, use multiple factors for decision
     
-    // Factor 1: Number of groups (more granular split is often better)
-    if (rowSplit.groups.length > columnSplit.groups.length + 1) {
+    // Factor 1: Number of groups (prefer more granular split)
+    const rowGroups = rowSplit.groups.length;
+    const colGroups = columnSplit.groups.length;
+    
+    if (rowGroups > colGroups + 1) {
       return { direction: 'column', result: rowSplit };
     }
-    if (columnSplit.groups.length > rowSplit.groups.length + 1) {
+    if (colGroups > rowGroups + 1) {
       return { direction: 'row', result: columnSplit };
     }
 
     // Factor 2: Alignment score (lower is better)
-    if (rowSplit.minAlignDis < columnSplit.minAlignDis - 5) {
+    const rowAlign = rowSplit.minAlignDis;
+    const colAlign = columnSplit.minAlignDis;
+    
+    if (rowAlign < colAlign - 5) {
       return { direction: 'column', result: rowSplit };
     }
-    if (columnSplit.minAlignDis < rowSplit.minAlignDis - 5) {
+    if (colAlign < rowAlign - 5) {
       return { direction: 'row', result: columnSplit };
     }
 
-    // Factor 3: Minimum margin distance (larger is cleaner separation)
+    // Factor 3: Minimum margin distance (larger gap = cleaner split)
     const rowMargin = rowSplit.minMarginDis?.distance ?? -Infinity;
     const colMargin = columnSplit.minMarginDis?.distance ?? -Infinity;
+    
     if (rowMargin > colMargin + 5) {
       return { direction: 'column', result: rowSplit };
     }
@@ -617,7 +659,7 @@ export function analyzeSplit(
       return { direction: 'row', result: columnSplit };
     }
 
-    // Default: prefer column layout (row split) as it's more common
+    // Default: prefer column layout (vertical stacking is more common)
     return { direction: 'column', result: rowSplit };
   }
 
@@ -629,20 +671,10 @@ export function analyzeSplit(
     return { direction: 'row', result: columnSplit };
   }
 
-  // Neither split works, return mix layout
+  // Neither split works - return mix layout
   return {
     direction: 'mix',
-    result: {
-      success: false,
-      groups: [],
-      gaps: [],
-      type: 'rows',
-      els: [],
-      margins: [],
-      minMarginDis: null,
-      minAlignDis: Infinity,
-      splitGroups: [],
-    },
+    result: createEmptyResult([], 'rows'),
   };
 }
 
@@ -651,9 +683,18 @@ export function analyzeSplit(
  */
 export function calculateAverageGap(gaps: number[]): number {
   if (gaps.length === 0) return 0;
-  const positiveGaps = gaps.filter(g => g > 0);
-  if (positiveGaps.length === 0) return 0;
-  return positiveGaps.reduce((a, b) => a + b, 0) / positiveGaps.length;
+  
+  let sum = 0;
+  let count = 0;
+  
+  for (const g of gaps) {
+    if (g > 0) {
+      sum += g;
+      count++;
+    }
+  }
+  
+  return count > 0 ? sum / count : 0;
 }
 
 /**
@@ -662,6 +703,14 @@ export function calculateAverageGap(gaps: number[]): number {
 export function areGapsEqual(gaps: number[], tolerance: number = 5): boolean {
   if (gaps.length <= 1) return true;
 
-  const avgGap = calculateAverageGap(gaps);
-  return gaps.every(gap => Math.abs(gap - avgGap) <= tolerance);
+  const avg = calculateAverageGap(gaps);
+  if (avg === 0) return true;
+
+  for (const gap of gaps) {
+    if (Math.abs(gap - avg) > tolerance) {
+      return false;
+    }
+  }
+  
+  return true;
 }
