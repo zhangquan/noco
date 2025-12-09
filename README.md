@@ -10,6 +10,8 @@ A monorepo for AI Agent-friendly database tools and utilities.
 | [@workspace/platform-server](./packages/platform-server) | Low-code platform backend service with Express.js + AgentDB |
 | [@workspace/flow-designer](./packages/flow-designer) | Flow designer - core engine + React UI for visual flow editing |
 | [@workspace/flow-runtime](./packages/flow-runtime) | Flow runtime - execution engine, triggers, executors |
+| [@workspace/flex-parser](./packages/flex-parser) | Convert absolute positioning design schema to CSS Flex layout |
+| [@workspace/code2vision](./packages/code2vision) | TSX code visualization and manipulation tool (planning) |
 
 ## Getting Started
 
@@ -75,14 +77,23 @@ noco/
 │   │   │   └── lang/     # i18n
 │   │   ├── package.json
 │   │   └── tsconfig.json
-│   └── flow-runtime/     # Flow execution engine
-│       ├── src/
-│       │   ├── engine/   # ExecutionEngine
-│       │   ├── executors/ # ExecutorRegistry
-│       │   ├── triggers/ # TriggerManager
-│       │   └── types/    # Type definitions
-│       ├── package.json
-│       └── tsconfig.json
+│   ├── flow-runtime/     # Flow execution engine
+│   │   ├── src/
+│   │   │   ├── engine/   # ExecutionEngine
+│   │   │   ├── executors/ # ExecutorRegistry
+│   │   │   ├── triggers/ # TriggerManager
+│   │   │   └── types/    # Type definitions
+│   │   ├── package.json
+│   │   └── tsconfig.json
+│   ├── flex-parser/      # Design to Flex layout converter
+│   │   ├── src/
+│   │   │   ├── layout/   # Layout algorithms
+│   │   │   └── utils/    # Utilities
+│   │   ├── package.json
+│   │   └── tsconfig.json
+│   └── code2vision/      # TSX code visualization (planning)
+│       ├── FEASIBILITY_STUDY.md  # Technical proposal
+│       └── README.md
 ├── package.json          # Root workspace configuration
 ├── pnpm-workspace.yaml   # pnpm workspace configuration
 └── tsconfig.json         # Root TypeScript configuration
