@@ -18,6 +18,7 @@
     { "path": "./packages/agentdb" },
     { "path": "./packages/platform-server" },
     { "path": "./packages/flow-designer" },
-    { "path": "./packages/flow-runtime" }
+    { "path": "./packages/flow-runtime" },
+    { "path": "./packages/flex-parser" }
   ]
 }
