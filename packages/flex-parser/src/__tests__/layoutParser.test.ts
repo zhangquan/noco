@@ -69,6 +69,8 @@ describe('splitToColumn', () => {
     const result = splitToColumn(nodes);
     expect(result.success).toBe(true);
     expect(result.groups).toHaveLength(3);
+    expect(result.type).toBe('column');
+    expect(result.margins).toHaveLength(2);
   });
 
   it('should not split single element', () => {
@@ -88,8 +90,32 @@ describe('splitToColumn', () => {
     ];
 
     const result = splitToColumn(nodes);
-    // Should return single group as elements overlap
+    // Should return single group as elements overlap significantly
     expect(result.success).toBe(false);
+  });
+
+  it('should allow slight overlap within tolerance', () => {
+    // Elements with slight overlap (less than width/4)
+    const nodes: NodeSchema[] = [
+      createSchema('A', { frame: { left: 0, top: 0, width: 100, height: 50 } }),
+      createSchema('B', { frame: { left: 90, top: 0, width: 100, height: 50 } }), // 10px overlap, tolerance ~25px
+    ];
+
+    const result = splitToColumn(nodes);
+    // Should still split as overlap is within tolerance
+    expect(result.success).toBe(true);
+  });
+
+  it('should provide minMarginDis and minAlignDis', () => {
+    const nodes: NodeSchema[] = [
+      createSchema('A', { frame: { left: 0, top: 0, width: 50, height: 50 } }),
+      createSchema('B', { frame: { left: 100, top: 0, width: 50, height: 50 } }),
+    ];
+
+    const result = splitToColumn(nodes);
+    expect(result.success).toBe(true);
+    expect(result.minMarginDis).not.toBeNull();
+    expect(result.minMarginDis?.distance).toBe(50);
   });
 });
 
@@ -104,6 +130,8 @@ describe('splitToRow', () => {
     const result = splitToRow(nodes);
     expect(result.success).toBe(true);
     expect(result.groups).toHaveLength(3);
+    expect(result.type).toBe('rows');
+    expect(result.margins).toHaveLength(2);
   });
 
   it('should not split horizontally arranged elements', () => {
@@ -115,6 +143,34 @@ describe('splitToRow', () => {
     const result = splitToRow(nodes);
     // Should return single group as elements are side by side
     expect(result.success).toBe(false);
+  });
+
+  it('should group overlapping elements in same row', () => {
+    // Elements B and C overlap vertically - should be in same row
+    const nodes: NodeSchema[] = [
+      createSchema('A', { frame: { left: 0, top: 0, width: 100, height: 50 } }),
+      createSchema('B', { frame: { left: 0, top: 80, width: 150, height: 50 } }),   // bottom: 130
+      createSchema('C', { frame: { left: 160, top: 100, width: 50, height: 30 } }), // bottom: 130, overlaps with B
+      createSchema('D', { frame: { left: 0, top: 160, width: 100, height: 50 } }),
+    ];
+
+    const result = splitToRow(nodes);
+    expect(result.success).toBe(true);
+    // A, [B+C], D = 3 rows
+    expect(result.groups).toHaveLength(3);
+  });
+
+  it('should provide margin information', () => {
+    const nodes: NodeSchema[] = [
+      createSchema('A', { frame: { left: 0, top: 0, width: 100, height: 50 } }),
+      createSchema('B', { frame: { left: 0, top: 100, width: 100, height: 50 } }),
+    ];
+
+    const result = splitToRow(nodes);
+    expect(result.success).toBe(true);
+    expect(result.margins).toHaveLength(1);
+    expect(result.margins[0].distance).toBe(50);
+    expect(result.minMarginDis?.distance).toBe(50);
   });
 });
 

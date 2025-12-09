@@ -19,7 +19,6 @@ export type {
   StyleProps,
   NodeProps,
   NodeSchema,
-  SplitResult,
   ChildClassification,
   LayoutContext,
   JSXElement,
@@ -37,9 +36,20 @@ export {
 export {
   splitToRow,
   splitToColumn,
+  smartSplitToColumn,
   analyzeSplit,
   calculateAverageGap,
   areGapsEqual,
+  getSplitRowAlignValue,
+  getSplitColumnAlignValue,
+} from './layout/split.js';
+
+// Export split types
+export type {
+  SplitResult,
+  SimpleSplitResult,
+  SplitGroup,
+  MarginInfo,
 } from './layout/split.js';
 
 // Export check layout functions

@@ -129,17 +129,7 @@ export interface NodeSchema {
   [key: string]: unknown;
 }
 
-/**
- * Split result containing groups of nodes
- */
-export interface SplitResult {
-  /** Whether the split was successful */
-  success: boolean;
-  /** Groups of nodes after split */
-  groups: NodeSchema[][];
-  /** Gap between groups */
-  gaps: number[];
-}
+// Note: SplitResult is now defined in layout/split.ts with more detailed fields
 
 /**
  * Child classification result

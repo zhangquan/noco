@@ -90,9 +90,23 @@ const result = docLayoutParser(doc);
 
 Try to split elements into rows (horizontal groups stacked vertically).
 
+```typescript
+const result = splitToRow(nodes);
+// Returns: { success, groups, gaps, margins, minMarginDis, minAlignDis, type: 'rows', ... }
+```
+
 #### `splitToColumn(nodes: NodeSchema[]): SplitResult`
 
 Try to split elements into columns (vertical groups arranged horizontally).
+
+```typescript
+const result = splitToColumn(nodes);
+// Returns: { success, groups, gaps, margins, minMarginDis, minAlignDis, type: 'column', ... }
+```
+
+#### `smartSplitToColumn(nodes: NodeSchema[]): SplitResult`
+
+Enhanced column split that merges columns that can form better row layouts.
 
 #### `jsx2Schema(jsxElement: JSXElement): NodeSchema`
 
@@ -213,18 +227,32 @@ import {
 
 ### Split Algorithm
 
-**Row Split** (elements sorted by bottom coordinate):
-- Detect vertical gaps between adjacent elements
-- Split when gap exceeds threshold
+**Row Split (`splitToRow`)** - Splits elements into horizontal rows:
+1. Sort elements by bottom coordinate (ascending)
+2. Use "greedy accumulation" with look-ahead to all remaining elements
+3. Split when: `remainingElements.top - currentGroup.bottom ≥ tolerance`
+4. Tolerance formula: `-min(elementHeight, remainingBBoxHeight) / 5`
 
-**Column Split** (elements sorted by right coordinate):
-- Detect horizontal gaps between adjacent elements
-- Split when gap exceeds threshold
+**Column Split (`splitToColumn`)** - Splits elements into vertical columns:
+1. Sort elements by right coordinate (ascending)
+2. Use "greedy accumulation" with look-ahead to all remaining elements
+3. Split when: `remainingElements.left - currentGroup.right ≥ tolerance`
+4. Tolerance formula: `-min(elementWidth, remainingBBoxWidth) / 4`
+
+**Smart Column Split (`smartSplitToColumn`)**:
+- Enhanced version that tries to merge adjacent columns when they form better row layouts
+- Useful for complex grid-like structures
 
 **Tolerance Mechanism**:
-- Allows some element overlap (negative threshold)
-- Column tolerance: ~1/4 element width
-- Row tolerance: ~1/5 element height
+- Allows slight element overlap (negative threshold)
+- Tolerance scales with element size for visual consistency
+- Column tolerance: ~1/4 of element width
+- Row tolerance: ~1/5 of element height
+
+**Alignment Scoring**:
+- `getSplitRowAlignValue`: Evaluates alignment quality between adjacent rows
+- `getSplitColumnAlignValue`: Evaluates alignment quality between adjacent columns
+- Lower scores indicate better alignment
 
 ### Layout Selection Priority
 
