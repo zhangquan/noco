@@ -1,6 +1,11 @@
 /**
  * Core layout calculation engine
  * Converts absolute positioning to Flex layout structure
+ * 
+ * Enhanced with P0 optimizations:
+ * - Multi-strategy split system
+ * - Adaptive tolerance calculation
+ * - Semantic alignment recognition
  */
 
 import type {
@@ -30,10 +35,12 @@ import {
   classifyChildren,
   determineLayoutType,
   detectAlignment,
+  detectAlignmentExtended,
   calculateOptimalGap,
 } from './checkLayout.js';
 import { splitToRow, splitToColumn } from './split.js';
 import { generateFlexStyle, generateChildStyle } from './style.js';
+import { alignmentToCSS } from './alignment.js';
 
 /**
  * Process a single node and its children
@@ -100,17 +107,44 @@ function processNode(
       // Flatten processed groups back into children
       result.children = processedGroups.flat();
 
-      // Detect alignment
+      // Detect alignment with enhanced semantic recognition
       if (parentFrame) {
         const normalFrames = normal.map(n => getNodeFrame(n)).filter((f): f is Frame => !!f);
         if (normalFrames.length > 0) {
-          const alignment = detectAlignment(parentFrame, normal);
+          // Use enhanced alignment detection
+          const extendedAlignment = detectAlignmentExtended(parentFrame, normal);
           
+          // Store standard alignment in x-layout for backward compatibility
+          const alignment = detectAlignment(parentFrame, normal);
           result['x-layout'] = {
             ...result['x-layout'],
             alignHorizontal: alignment.alignHorizontal,
             alignVertical: alignment.alignVertical,
           };
+
+          // Apply extended alignment styles directly when confidence is high
+          if (result.layoutType && result.layoutType !== 'mix') {
+            const cssAlignment = alignmentToCSS(
+              extendedAlignment.alignHorizontal,
+              extendedAlignment.alignVertical,
+              result.layoutType
+            );
+            
+            // Only apply extended alignment (like space-evenly) if confidence is high
+            if (extendedAlignment.horizontalConfidence > 0.7 || 
+                extendedAlignment.verticalConfidence > 0.7) {
+              result.props = result.props || {};
+              result.props.style = result.props.style || {};
+              
+              if (cssAlignment.justifyContent !== 'flex-start') {
+                result.props.style.justifyContent = cssAlignment.justifyContent;
+              }
+              if (cssAlignment.alignItems !== 'flex-start' && 
+                  cssAlignment.alignItems !== 'stretch') {
+                result.props.style.alignItems = cssAlignment.alignItems;
+              }
+            }
+          }
         }
       }
 
