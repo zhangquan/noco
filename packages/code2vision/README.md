@@ -30,6 +30,7 @@
 - [可行性研究报告](./FEASIBILITY_STUDY.md) - 完整的技术方案和规划
 - [TSX 转换技术分析](./TSX_TO_SCHEMA_ANALYSIS.md) - TSX → Schema 转换的深度技术分析
 - [逻辑与状态表达](./LOGIC_STATE_EXPRESSION.md) - 组件逻辑、状态的可视化表达方案
+- [Vision-Friendly TSX 规范](./VISION_TSX_SPEC.md) - TSX 语法约束规范，提升转换准确率
 
 ## License
 
