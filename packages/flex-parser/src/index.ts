@@ -57,10 +57,63 @@ export {
   classifyChildren,
   determineLayoutType,
   detectAlignment,
+  detectAlignmentEnhanced,
+  detectAlignmentExtended,
   needsAbsolutePositioning,
   calculateOptimalGap,
   detectGridPattern,
 } from './layout/checkLayout.js';
+
+// Export multi-strategy split system
+export {
+  MultiStrategySplitExecutor,
+  GreedyEdgeSplitStrategy,
+  CenterLineSplitStrategy,
+  GridAlignedSplitStrategy,
+  ClusteringSplitStrategy,
+  calculateSplitScore,
+  calculateVariance,
+  calculateStdDev,
+  calculateCV,
+} from './layout/strategies.js';
+
+export type {
+  ScoredSplitResult,
+  SplitContext,
+  SplitStrategy,
+} from './layout/strategies.js';
+
+// Export adaptive tolerance calculation
+export {
+  analyzeLayoutFactors,
+  calculateAdaptiveTolerance,
+  calculateRowSplitTolerance,
+  calculateColumnSplitTolerance,
+  getOverlapTolerance,
+  isValidSplitGap,
+  calculateOverlapDetectionTolerance,
+} from './layout/tolerance.js';
+
+export type {
+  ToleranceFactors,
+  ToleranceConfig,
+} from './layout/tolerance.js';
+
+// Export semantic alignment recognition
+export {
+  analyzeAlignment,
+  analyzeHorizontalAlignment,
+  analyzeVerticalAlignment,
+  alignmentToCSS,
+  normalizeHorizontalAlignment,
+  normalizeVerticalAlignment,
+} from './layout/alignment.js';
+
+export type {
+  ExtendedAlignHorizontal,
+  ExtendedAlignVertical,
+  AlignmentAnalysis,
+} from './layout/alignment.js';
 
 // Export style functions
 export {
