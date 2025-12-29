@@ -122,7 +122,7 @@ function App() {
 
 ### 触发器 (Triggers)
 - `trigger:manual` - 手动触发
-- `trigger:schedule` - 定时触发
+- `trigger:schedule` - 定时分析任务
 - `trigger:webhook` - Webhook 触发
 - `trigger:record` - 数据记录事件触发
 - `trigger:form` - 表单提交触发

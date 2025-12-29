@@ -32,7 +32,7 @@
       "insert": "When data is created",
       "update": "When data is updated",
       "delete": "When data is deleted",
-      "timer": "On schedule",
+      "timer": "Scheduled Analysis Task",
       "webhook": "On webhook",
       "form": "On form submit",
       "manual": "Manual trigger"

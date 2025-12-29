@@ -217,7 +217,7 @@ interface ExecutionContext {
 
 ### Triggers
 - `trigger:manual` - Manual trigger entry point
-- `trigger:schedule` - Scheduled/cron trigger
+- `trigger:schedule` - Scheduled analysis task
 - `trigger:webhook` - HTTP webhook trigger
 - `trigger:record` - Database record event trigger
 - `trigger:form` - Form submission trigger

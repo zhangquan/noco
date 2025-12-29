@@ -215,7 +215,7 @@ enum FlowNodeTypes {
 enum FlowEventTypes {
   INSERT = 'insert',   // 当创建数据时执行
   UPDATE = 'update',   // 当更新数据时执行
-  TIMER = 'time',      // 定时执行 (待实现)
+  TIMER = 'time',      // 定时分析任务
 }
 ```
 
@@ -851,7 +851,7 @@ lang/
     "events": {
       "insert": "当创建数据时",
       "update": "当更新数据时",
-      "timer": "定时执行"
+      "timer": "定时分析任务"
     },
     "setter": {
       "title": "标题",
