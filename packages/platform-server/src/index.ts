@@ -388,6 +388,30 @@ export {
 } from './middleware/index.js';
 
 // ============================================================================
+// Configuration
+// ============================================================================
+
+export {
+  // Analysis Type Configuration
+  AnalysisType,
+  TeamType,
+  TEAMS,
+  ANALYSIS_TYPES,
+  getTeamForAnalysisType,
+  getTeamConfigForAnalysisType,
+  getAnalysisTypeConfig,
+  getAnalysisTypesForTeam,
+  getAllTeams,
+  getAllAnalysisTypes,
+  isValidAnalysisType,
+  isValidTeamType,
+  getGroupIdForTeam,
+  getGroupIdForAnalysisType,
+  type TeamConfig,
+  type AnalysisTypeConfig,
+} from './config/analysisTeamConfig.js';
+
+// ============================================================================
 // Utilities
 // ============================================================================
 

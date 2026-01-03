@@ -6,7 +6,7 @@
 
 import { BaseRepository, type RepositoryOptions } from './BaseRepository.js';
 import { CacheScope, MetaTable } from '../types/index.js';
-import type { Flow, FlowTriggerType } from '../types/index.js';
+import type { Flow, FlowTriggerType, AnalysisType } from '../types/index.js';
 import { generateId } from '../db/index.js';
 
 // ============================================================================
@@ -23,6 +23,8 @@ export interface CreateFlowData {
   project_id: string;
   title: string;
   trigger_type?: FlowTriggerType;
+  /** Analysis type - for automatic team grouping */
+  analysis_type?: AnalysisType;
   group_id?: string;
   fk_schema_id?: string;
   meta?: Record<string, unknown>;
@@ -31,6 +33,8 @@ export interface CreateFlowData {
 export interface UpdateFlowData {
   title?: string;
   trigger_type?: FlowTriggerType;
+  /** Analysis type - for automatic team grouping */
+  analysis_type?: AnalysisType | null;
   enabled?: boolean;
   order?: number;
   group_id?: string | null;
@@ -126,6 +130,7 @@ class FlowRepositoryImpl extends BaseRepository<FlowRecord> {
       group_id: data.group_id,
       title: data.title.trim(),
       trigger_type: data.trigger_type || 'manual',
+      analysis_type: data.analysis_type,
       fk_schema_id: data.fk_schema_id,
       enabled: true,
       order: ((maxOrder as any)?.max || 0) + 1,
@@ -157,6 +162,7 @@ class FlowRepositoryImpl extends BaseRepository<FlowRecord> {
 
     if (data.title !== undefined) updateData.title = data.title.trim();
     if (data.trigger_type !== undefined) updateData.trigger_type = data.trigger_type;
+    if (data.analysis_type !== undefined) updateData.analysis_type = data.analysis_type === null ? undefined : data.analysis_type;
     if (data.enabled !== undefined) updateData.enabled = data.enabled;
     if (data.order !== undefined) updateData.order = data.order;
     if (data.group_id !== undefined) updateData.group_id = data.group_id === null ? undefined : data.group_id;

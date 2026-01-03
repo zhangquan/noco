@@ -324,6 +324,8 @@ export interface Flow {
   fk_schema_id?: string;
   fk_publish_schema_id?: string;
   trigger_type?: FlowTriggerType;
+  /** Analysis type - automatically maps to team group */
+  analysis_type?: AnalysisType;
   enabled?: boolean;
   order?: number;
   meta?: Record<string, unknown>;
@@ -332,6 +334,21 @@ export interface Flow {
 }
 
 export type FlowTriggerType = 'manual' | 'schedule' | 'webhook' | 'record' | 'form';
+
+/**
+ * Analysis types for flows
+ * - trend: 趋势分析 (Trend Analysis)
+ * - risk: 风险分析 (Risk Analysis)
+ * - final_decision: 最终决策 (Final Decision)
+ */
+export type AnalysisType = 'trend' | 'risk' | 'final_decision';
+
+/**
+ * Team types for organizing flows
+ * - research: 研究团队 (Research Team)
+ * - trading_decision: 交易决策团队 (Trading Decision Team)
+ */
+export type TeamType = 'research' | 'trading_decision';
 
 // ============================================================================
 // Schema Types
