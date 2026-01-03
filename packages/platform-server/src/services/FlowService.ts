@@ -6,9 +6,14 @@
 
 import { BaseService, type ServiceOptions } from './BaseService.js';
 import { CacheScope, MetaTable } from '../types/index.js';
-import type { Flow, FlowTriggerType } from '../types/index.js';
+import type { Flow, FlowTriggerType, AnalysisType } from '../types/index.js';
 import { NotFoundError } from '../errors/index.js';
 import { ProjectService } from './ProjectService.js';
+import {
+  isValidAnalysisType,
+  getGroupIdForAnalysisType,
+  getAnalysisTypeConfig,
+} from '../config/analysisTeamConfig.js';
 
 // ============================================================================
 // Types
@@ -16,8 +21,11 @@ import { ProjectService } from './ProjectService.js';
 
 export interface CreateFlowInput {
   project_id: string;
-  title: string;
+  title?: string;
   trigger_type?: FlowTriggerType;
+  /** Analysis type - automatically assigns to the correct team group */
+  analysis_type?: AnalysisType;
+  /** Group ID - if not provided and analysis_type is set, will be auto-assigned based on team mapping */
   group_id?: string;
   meta?: Record<string, unknown>;
 }
@@ -25,8 +33,11 @@ export interface CreateFlowInput {
 export interface UpdateFlowInput {
   title?: string;
   trigger_type?: FlowTriggerType;
+  /** Analysis type - automatically assigns to the correct team group */
+  analysis_type?: AnalysisType | null;
   enabled?: boolean;
   order?: number;
+  /** Group ID - if analysis_type is set, this will be overridden */
   group_id?: string | null;
   fk_schema_id?: string;
   meta?: Record<string, unknown>;
@@ -99,20 +110,51 @@ class FlowServiceImpl extends BaseService<Flow> {
 
   /**
    * Create a new flow
+   * 
+   * If analysis_type is provided:
+   * - The flow will be automatically assigned to the correct team group
+   * - If title is not provided, uses the analysis type's default title
+   * 
+   * Team mapping:
+   * - 趋势分析 (trend) → 研究团队 (research)
+   * - 风险分析 (risk) → 交易决策团队 (trading_decision)
+   * - 最终决策 (final_decision) → 交易决策团队 (trading_decision)
    */
   async createFlow(input: CreateFlowInput, options?: ServiceOptions): Promise<Flow> {
     // Verify project exists
     await ProjectService.getByIdOrFail(input.project_id, options);
 
+    // Handle analysis type - automatically assign to team group
+    let groupId = input.group_id;
+    let title = input.title;
+    let analysisType: AnalysisType | undefined = input.analysis_type;
+
+    if (analysisType && isValidAnalysisType(analysisType)) {
+      // Automatically assign to the correct team group based on analysis type
+      groupId = getGroupIdForAnalysisType(analysisType);
+      
+      // Use default title from analysis type config if not provided
+      if (!title) {
+        const config = getAnalysisTypeConfig(analysisType);
+        title = config.defaultTitle || config.name;
+      }
+    }
+
+    // Ensure title is provided
+    if (!title) {
+      title = '新流程';
+    }
+
     // Get max order for the group
-    const maxOrder = await this.getMaxOrder(input.project_id, input.group_id, options);
+    const maxOrder = await this.getMaxOrder(input.project_id, groupId, options);
 
     return this.create({
       project_id: input.project_id,
-      title: input.title.trim(),
+      title: title.trim(),
       trigger_type: input.trigger_type || 'manual',
+      analysis_type: analysisType,
       enabled: false,
-      group_id: input.group_id,
+      group_id: groupId,
       order: maxOrder + 1,
       meta: input.meta,
     } as Partial<Flow>, options);
@@ -120,6 +162,14 @@ class FlowServiceImpl extends BaseService<Flow> {
 
   /**
    * Update a flow
+   * 
+   * If analysis_type is changed:
+   * - The flow will be automatically moved to the correct team group
+   * 
+   * Team mapping:
+   * - 趋势分析 (trend) → 研究团队 (research)
+   * - 风险分析 (risk) → 交易决策团队 (trading_decision)
+   * - 最终决策 (final_decision) → 交易决策团队 (trading_decision)
    */
   async updateFlow(id: string, input: UpdateFlowInput, options?: ServiceOptions): Promise<Flow> {
     const updateData: Partial<Flow> = {};
@@ -128,9 +178,27 @@ class FlowServiceImpl extends BaseService<Flow> {
     if (input.trigger_type !== undefined) updateData.trigger_type = input.trigger_type;
     if (input.enabled !== undefined) updateData.enabled = input.enabled;
     if (input.order !== undefined) updateData.order = input.order;
-    if (input.group_id !== undefined) updateData.group_id = input.group_id || undefined;
     if (input.fk_schema_id !== undefined) updateData.fk_schema_id = input.fk_schema_id;
     if (input.meta !== undefined) updateData.meta = input.meta;
+
+    // Handle analysis type - automatically update team group
+    if (input.analysis_type !== undefined) {
+      if (input.analysis_type === null) {
+        // Clearing analysis type
+        updateData.analysis_type = undefined;
+        // Use explicit group_id if provided, otherwise keep current
+        if (input.group_id !== undefined) {
+          updateData.group_id = input.group_id || undefined;
+        }
+      } else if (isValidAnalysisType(input.analysis_type)) {
+        // Setting analysis type - auto-assign to team group
+        updateData.analysis_type = input.analysis_type;
+        updateData.group_id = getGroupIdForAnalysisType(input.analysis_type);
+      }
+    } else if (input.group_id !== undefined) {
+      // Only update group_id if analysis_type is not being changed
+      updateData.group_id = input.group_id || undefined;
+    }
 
     return this.update(id, updateData, options);
   }

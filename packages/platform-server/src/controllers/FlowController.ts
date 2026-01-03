@@ -11,6 +11,13 @@ import { ProjectService } from '../services/ProjectService.js';
 import { sendSuccess, sendCreated, sendList } from '../utils/response.js';
 import { ValidationError, AuthenticationError, NotFoundError } from '../errors/index.js';
 import type { ApiRequest, FlowTriggerType } from '../types/index.js';
+import {
+  getAllTeams,
+  getAllAnalysisTypes,
+  getAnalysisTypesForTeam,
+  isValidTeamType,
+  type TeamType,
+} from '../config/analysisTeamConfig.js';
 
 // ============================================================================
 // Validation Schemas
@@ -18,18 +25,36 @@ import type { ApiRequest, FlowTriggerType } from '../types/index.js';
 
 const TriggerTypeSchema = z.enum(['manual', 'schedule', 'webhook', 'record', 'form']);
 
+/**
+ * Analysis type schema
+ * - trend: 趋势分析 → 研究团队
+ * - risk: 风险分析 → 交易决策团队
+ * - final_decision: 最终决策 → 交易决策团队
+ */
+const AnalysisTypeSchema = z.enum(['trend', 'risk', 'final_decision']);
+
 const CreateFlowSchema = z.object({
-  title: z.string().min(1, 'Title is required').max(255),
+  /** Title is optional when analysis_type is provided (uses default title) */
+  title: z.string().min(1).max(255).optional(),
   trigger_type: TriggerTypeSchema.optional(),
+  /** Analysis type - automatically assigns to the correct team group */
+  analysis_type: AnalysisTypeSchema.optional(),
+  /** Group ID - overridden by analysis_type if provided */
   group_id: z.string().optional(),
   meta: z.record(z.unknown()).optional(),
-});
+}).refine(
+  (data) => data.title || data.analysis_type,
+  { message: 'Either title or analysis_type must be provided' }
+);
 
 const UpdateFlowSchema = z.object({
   title: z.string().min(1).max(255).optional(),
   trigger_type: TriggerTypeSchema.optional(),
+  /** Analysis type - automatically assigns to the correct team group */
+  analysis_type: AnalysisTypeSchema.nullable().optional(),
   enabled: z.boolean().optional(),
   order: z.number().int().optional(),
+  /** Group ID - overridden by analysis_type if provided */
   group_id: z.string().nullable().optional(),
   fk_schema_id: z.string().optional(),
   meta: z.record(z.unknown()).optional(),
@@ -299,12 +324,65 @@ async function moveToGroup(req: Request, res: Response, next: NextFunction): Pro
   }
 }
 
+/**
+ * GET /flows/teams - Get all teams configuration
+ * Returns the list of teams with their analysis types
+ */
+async function getTeams(_req: Request, res: Response, next: NextFunction): Promise<void> {
+  try {
+    const teams = getAllTeams().map(team => ({
+      ...team,
+      analysisTypes: getAnalysisTypesForTeam(team.id),
+    }));
+
+    sendSuccess(res, teams);
+  } catch (error) {
+    next(error);
+  }
+}
+
+/**
+ * GET /flows/analysis-types - Get all analysis types configuration
+ * Returns the list of analysis types with their team mapping
+ */
+async function getAnalysisTypes(_req: Request, res: Response, next: NextFunction): Promise<void> {
+  try {
+    const analysisTypes = getAllAnalysisTypes();
+    sendSuccess(res, analysisTypes);
+  } catch (error) {
+    next(error);
+  }
+}
+
+/**
+ * GET /flows/teams/:teamId/analysis-types - Get analysis types for a specific team
+ */
+async function getTeamAnalysisTypes(req: Request, res: Response, next: NextFunction): Promise<void> {
+  try {
+    const { teamId } = req.params;
+
+    if (!isValidTeamType(teamId)) {
+      throw new NotFoundError('Team', teamId);
+    }
+
+    const analysisTypes = getAnalysisTypesForTeam(teamId as TeamType);
+    sendSuccess(res, analysisTypes);
+  } catch (error) {
+    next(error);
+  }
+}
+
 // ============================================================================
 // Router Factory
 // ============================================================================
 
 export function createFlowRouter(): Router {
   const router = Router({ mergeParams: true });
+
+  // Team and Analysis Type configuration (must be before /:flowId routes)
+  router.get('/teams', getTeams);
+  router.get('/analysis-types', getAnalysisTypes);
+  router.get('/teams/:teamId/analysis-types', getTeamAnalysisTypes);
 
   // Flow CRUD
   router.get('/', list);
