@@ -97,7 +97,7 @@ export const SetterPanel: React.FC<SetterPanelProps> = ({
                   { label: '创建数据时', value: FlowEventTypes.INSERT },
                   { label: '更新数据时', value: FlowEventTypes.UPDATE },
                   { label: '删除数据时', value: FlowEventTypes.DELETE },
-                  { label: '定时触发', value: FlowEventTypes.TIMER },
+                  { label: '定时分析任务', value: FlowEventTypes.TIMER },
                   { label: 'Webhook', value: FlowEventTypes.WEBHOOK },
                   { label: '手动触发', value: FlowEventTypes.MANUAL },
                 ]}

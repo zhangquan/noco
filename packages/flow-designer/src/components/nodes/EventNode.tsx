@@ -35,7 +35,7 @@ const EVENT_TYPE_CONFIG: Record<string, { label: string; icon: React.ReactNode; 
   insert: { label: '创建数据时', icon: <PlusCircleOutlined />, color: 'green' },
   update: { label: '更新数据时', icon: <EditOutlined />, color: 'blue' },
   delete: { label: '删除数据时', icon: <DatabaseOutlined />, color: 'red' },
-  timer: { label: '定时触发', icon: <ClockCircleOutlined />, color: 'orange' },
+  timer: { label: '定时分析任务', icon: <ClockCircleOutlined />, color: 'orange' },
   webhook: { label: 'Webhook', icon: <ApiOutlined />, color: 'purple' },
   form: { label: '表单提交', icon: <FormOutlined />, color: 'cyan' },
   manual: { label: '手动触发', icon: <PlayCircleOutlined />, color: 'default' },

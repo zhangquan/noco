@@ -34,15 +34,15 @@ const ManualTriggerDef: NodeDefinition = {
 };
 
 /**
- * Schedule trigger node definition
+ * Scheduled analysis task node definition
  */
 const ScheduleTriggerDef: NodeDefinition = {
   type: 'trigger:schedule',
   category: 'trigger',
-  name: 'Schedule',
-  description: 'Trigger workflow on a schedule',
+  name: 'Scheduled Analysis Task',
+  description: 'Trigger scheduled analysis task',
   icon: 'clock',
-  defaultLabel: 'Schedule',
+  defaultLabel: 'Scheduled Analysis Task',
   inputs: [],
   outputs: [
     { label: 'Output', direction: 'output', dataType: 'flow' },

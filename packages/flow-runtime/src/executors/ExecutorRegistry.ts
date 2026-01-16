@@ -20,10 +20,10 @@ const manualTriggerExecutor: NodeExecutor = async (context, config) => {
 };
 
 /**
- * Schedule trigger executor
+ * Scheduled analysis task executor
  */
 const scheduleTriggerExecutor: NodeExecutor = async (context, config) => {
-  context.log('info', 'Schedule trigger executed');
+  context.log('info', 'Scheduled analysis task executed');
   // Outputs are set by the engine from trigger data
 };
 
